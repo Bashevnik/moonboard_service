@@ -1,13 +1,14 @@
 # Генератор мудбордов
 
 Статический одностраничный сайт для GitHub Pages. Пользователь загружает
-референс, описывает настроение, получает мудборд и может скачать результат.
+референс, описывает настроение, сайт отправляет фото и текст в Google Gemini API,
+показывает сгенерированный мудборд и позволяет скачать результат.
 
 ## Файлы
 
 - `index.html` - разметка страницы
 - `style.css` - адаптивный визуальный дизайн
-- `script.js` - загрузка файла, валидация, API-запрос, demo mode и скачивание
+- `script.js` - загрузка файла, валидация, Gemini API, fallback и скачивание
 - `README.md` - описание проекта
 
 ## Локальный запуск
@@ -30,39 +31,47 @@ python -m http.server 8000
 http://localhost:8000/
 ```
 
-## Настройка API
+## Настройка Gemini API
 
-В `script.js` замените значения в начале файла:
+В `script.js` замените значение в начале файла:
 
 ```js
-const API_KEY = "PASTE_YOUR_API_KEY_HERE";
-const API_URL = "PASTE_IMAGE_GENERATION_API_URL_HERE";
+const GEMINI_API_KEY = "PASTE_GEMINI_API_KEY_HERE";
 ```
 
-Пример запроса отправляет поля `FormData`:
+Сайт использует нативную генерацию/редактирование изображений Gemini:
 
-- `image`
-- `prompt`
-- `style: "moodboard"`
-- `aspect_ratio: "1:1"`
-
-Ожидаемый JSON-ответ:
-
-```json
-{
-  "image_url": "https://..."
-}
+```text
+model: gemini-3.1-flash-image
+endpoint: https://generativelanguage.googleapis.com/v1/models/gemini-3.1-flash-image:generateContent
 ```
+
+В запрос отправляются:
+
+- текстовый prompt
+- загруженное изображение как `inlineData`
+- `responseModalities: ["Image"]`
+- `responseFormat.image.aspectRatio: "1:1"`
+
+Gemini обычно возвращает изображение как base64 в:
+
+```text
+candidates[0].content.parts[].inlineData.data
+```
+
+Сайт также умеет обработать ответ с `image_url`, если API или прокси вернёт
+ссылку на изображение.
 
 Важно: хранить API-ключ во frontend JavaScript можно только для временного
 дипломного демо. В реальном проекте запросы нужно переносить на backend или
 serverless-прокси, чтобы ключ не был виден посетителям.
 
-## Demo Mode
+## Fallback
 
-Если `API_KEY` равен `PASTE_YOUR_API_KEY_HERE`, сайт не обращается к API.
-Через 2 секунды он создаёт демо-мудборд прямо в браузере с помощью Canvas и
-загруженного референса.
+Если `GEMINI_API_KEY` пустой или равен `PASTE_GEMINI_API_KEY_HERE`, сайт не
+отправляет запрос в Gemini. Через 2 секунды он показывает демо-мудборд,
+созданный в браузере. В этом режиме исходное фото не вставляется в готовый
+шаблон, это только визуальный fallback для защиты проекта без ключа.
 
 ## Публикация на GitHub Pages
 

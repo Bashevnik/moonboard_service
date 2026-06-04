@@ -1,11 +1,13 @@
-const API_KEY = "PASTE_YOUR_API_KEY_HERE";
-const API_URL = "PASTE_IMAGE_GENERATION_API_URL_HERE";
+const GEMINI_API_KEY = "PASTE_GEMINI_API_KEY_HERE";
 
-// Diploma/demo note: keeping an API key in frontend JavaScript is insecure.
-// For production, move API calls to a backend or serverless proxy and keep keys private.
+// Для дипломного демо ключ временно хранится во frontend JS.
+// В реальном проекте так делать нельзя: API-ключ нужно держать на backend
+// или serverless-прокси, чтобы посетители сайта не могли его увидеть.
 
-const PLACEHOLDER_API_KEY = "PASTE_YOUR_API_KEY_HERE";
-const PLACEHOLDER_API_URL = "PASTE_IMAGE_GENERATION_API_URL_HERE";
+const GEMINI_MODEL = "gemini-3.1-flash-image";
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent`;
+const GEMINI_PLACEHOLDER_KEY = "PASTE_GEMINI_API_KEY_HERE";
+const DEMO_MODE_DELAY = 2000;
 
 const generatorForm = document.getElementById("generatorForm");
 const dropZone = document.getElementById("dropZone");
@@ -60,13 +62,11 @@ dropZone.addEventListener("keydown", (event) => {
 
 dropZone.addEventListener("drop", (event) => {
   event.preventDefault();
-  const file = event.dataTransfer.files[0];
-  handleImageFile(file);
+  handleImageFile(event.dataTransfer.files[0]);
 });
 
 imageInput.addEventListener("change", () => {
-  const file = imageInput.files[0];
-  handleImageFile(file);
+  handleImageFile(imageInput.files[0]);
 });
 
 removeImageButton.addEventListener("click", () => {
@@ -100,20 +100,18 @@ generatorForm.addEventListener("submit", async (event) => {
   setGeneratingState(true);
 
   try {
-    const imageUrl = await generateMoodboard(selectedImageFile, promptText);
-    showResult(imageUrl);
+    const imageUrl = await generateMoodboardWithGemini(selectedImageFile, promptText);
+    renderResult(imageUrl);
   } catch (error) {
     console.error(error);
-    showError(
-      "Не удалось создать мудборд. Проверьте API-ключ, адрес API и формат ответа, затем попробуйте снова."
-    );
+    showError(getReadableApiError(error));
   } finally {
     setGeneratingState(false);
   }
 });
 
 downloadButton.addEventListener("click", () => {
-  downloadMoodboard();
+  downloadGeneratedImage();
 });
 
 generateAgainButton.addEventListener("click", () => {
@@ -201,7 +199,78 @@ function setGeneratingState(isLoading) {
   generateButtonText.textContent = isLoading ? "Создаём..." : "Создать мудборд";
 }
 
-function showResult(imageUrl) {
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const base64 = result.includes(",") ? result.split(",")[1] : result;
+      resolve(base64);
+    };
+
+    reader.onerror = () => reject(new Error("Не удалось прочитать изображение."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function generateMoodboardWithGemini(imageFile, promptText) {
+  if (!hasGeminiApiKey()) {
+    await wait(DEMO_MODE_DELAY);
+    return createDemoMoodboard(promptText);
+  }
+
+  const base64Image = await fileToBase64(imageFile);
+  const response = await fetch(GEMINI_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": GEMINI_API_KEY.trim(),
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: buildGeminiPrompt(promptText) },
+            {
+              inlineData: {
+                mimeType: imageFile.type || "image/png",
+                data: base64Image,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        responseModalities: ["Image"],
+        responseFormat: {
+          image: {
+            aspectRatio: "1:1",
+          },
+        },
+      },
+    }),
+  });
+
+  const data = await parseJsonResponse(response);
+
+  if (!response.ok) {
+    throw new Error(getGeminiErrorMessage(data, response.status));
+  }
+
+  const imageUrl = extractImageFromGeminiResponse(data);
+
+  if (!imageUrl) {
+    throw new Error(
+      "Gemini не вернул изображение. Попробуйте изменить описание или проверьте настройки модели."
+    );
+  }
+
+  return imageUrl;
+}
+
+function renderResult(imageUrl) {
   currentMoodboardUrl = imageUrl;
   resultImage.src = imageUrl;
   resultSection.hidden = false;
@@ -218,15 +287,16 @@ function hideResult() {
   resultSection.classList.remove("is-visible");
 }
 
-async function downloadMoodboard() {
+async function downloadGeneratedImage() {
   if (!currentMoodboardUrl) {
+    showError("Сначала создайте мудборд.");
     return;
   }
 
-  const fileName = `moodboard-${new Date().toISOString().slice(0, 10)}.png`;
+  const downloadName = `moodboard-${new Date().toISOString().slice(0, 10)}.png`;
 
-  if (currentMoodboardUrl.startsWith("data:")) {
-    triggerDownload(currentMoodboardUrl, fileName);
+  if (currentMoodboardUrl.startsWith("data:") || currentMoodboardUrl.startsWith("blob:")) {
+    triggerDownload(currentMoodboardUrl, downloadName);
     return;
   }
 
@@ -234,16 +304,20 @@ async function downloadMoodboard() {
     const response = await fetch(currentMoodboardUrl, { mode: "cors" });
 
     if (!response.ok) {
-      throw new Error("Could not fetch generated image for download.");
+      throw new Error("Не удалось скачать изображение по ссылке.");
     }
 
     const blob = await response.blob();
     const objectUrl = URL.createObjectURL(blob);
-    triggerDownload(objectUrl, fileName);
+    triggerDownload(objectUrl, downloadName);
     setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
   } catch (error) {
     console.warn(error);
-    triggerDownload(currentMoodboardUrl, fileName);
+    const link = window.open(currentMoodboardUrl, "_blank", "noopener,noreferrer");
+
+    if (!link) {
+      showError("Браузер заблокировал скачивание. Откройте результат в новой вкладке.");
+    }
   }
 }
 
@@ -252,51 +326,127 @@ function triggerDownload(url, fileName) {
   link.href = url;
   link.download = fileName;
   link.rel = "noopener";
-
-  if (!url.startsWith("data:") && !url.startsWith("blob:")) {
-    link.target = "_blank";
-  }
-
   document.body.appendChild(link);
   link.click();
   link.remove();
 }
 
-async function generateMoodboard(imageFile, promptText) {
-  if (API_KEY === PLACEHOLDER_API_KEY) {
-    await wait(2000);
-    return createDemoMoodboard(imageFile, promptText);
+function hasGeminiApiKey() {
+  const key = GEMINI_API_KEY.trim();
+  return Boolean(key) && key !== GEMINI_PLACEHOLDER_KEY;
+}
+
+function buildGeminiPrompt(promptText) {
+  return `Create a beautiful visual moodboard based on the uploaded reference image and this description: ${promptText}.
+Use the reference image only as inspiration for colors, textures, mood, lighting and visual direction.
+Generate one square moodboard image with multiple aesthetic sections, color palette, material textures, visual references, and cohesive composition.
+No text, no watermark, no logos.`;
+}
+
+async function parseJsonResponse(response) {
+  const text = await response.text();
+
+  if (!text) {
+    return {};
   }
 
-  if (!API_URL || API_URL === PLACEHOLDER_API_URL) {
-    throw new Error("Set API_URL before calling a real image generation API.");
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error("Gemini вернул ответ в неожиданном формате.");
+  }
+}
+
+function extractImageFromGeminiResponse(data) {
+  const directUrl = findImageUrl(data);
+
+  if (directUrl) {
+    return directUrl;
   }
 
-  const formData = new FormData();
-  formData.append("image", imageFile, imageFile.name);
-  formData.append("prompt", promptText);
-  formData.append("style", "moodboard");
-  formData.append("aspect_ratio", "1:1");
+  const parts = data?.candidates?.flatMap((candidate) => candidate?.content?.parts || []) || [];
 
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${API_KEY}`,
-    },
-    body: formData,
-  });
+  for (const part of parts) {
+    const inlineData = part.inlineData || part.inline_data;
 
-  if (!response.ok) {
-    throw new Error(`API request failed with status ${response.status}.`);
+    if (inlineData?.data) {
+      const mimeType = inlineData.mimeType || inlineData.mime_type || "image/png";
+      return `data:${mimeType};base64,${inlineData.data}`;
+    }
+
+    if (part.fileData?.fileUri || part.file_data?.file_uri) {
+      return part.fileData?.fileUri || part.file_data?.file_uri;
+    }
   }
 
-  const data = await response.json();
+  const generatedImageBytes =
+    data?.generatedImages?.[0]?.image?.imageBytes ||
+    data?.predictions?.[0]?.bytesBase64Encoded ||
+    data?.predictions?.[0]?.image?.imageBytes;
 
-  if (!data.image_url) {
-    throw new Error("API response must include an image_url field.");
+  if (generatedImageBytes) {
+    return `data:image/png;base64,${generatedImageBytes}`;
   }
 
-  return data.image_url;
+  return "";
+}
+
+function findImageUrl(value) {
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  if (typeof value.image_url === "string") {
+    return value.image_url;
+  }
+
+  if (typeof value.imageUrl === "string") {
+    return value.imageUrl;
+  }
+
+  if (value.image_url?.url) {
+    return value.image_url.url;
+  }
+
+  for (const item of Object.values(value)) {
+    if (Array.isArray(item)) {
+      for (const child of item) {
+        const nestedUrl = findImageUrl(child);
+        if (nestedUrl) {
+          return nestedUrl;
+        }
+      }
+    } else if (item && typeof item === "object") {
+      const nestedUrl = findImageUrl(item);
+      if (nestedUrl) {
+        return nestedUrl;
+      }
+    }
+  }
+
+  return "";
+}
+
+function getGeminiErrorMessage(data, status) {
+  const apiMessage = data?.error?.message || data?.message;
+
+  if (status === 400) {
+    return apiMessage || "Gemini отклонил запрос. Проверьте формат изображения и описание.";
+  }
+
+  if (status === 401 || status === 403) {
+    return apiMessage || "Gemini не принял API-ключ. Проверьте значение GEMINI_API_KEY.";
+  }
+
+  if (status === 429) {
+    return apiMessage || "Слишком много запросов к Gemini. Подождите немного и попробуйте снова.";
+  }
+
+  return apiMessage || `Gemini вернул ошибку ${status}. Попробуйте ещё раз.`;
+}
+
+function getReadableApiError(error) {
+  return error?.message || "Не удалось создать мудборд. Попробуйте ещё раз.";
 }
 
 function wait(milliseconds) {
@@ -305,62 +455,29 @@ function wait(milliseconds) {
   });
 }
 
-function createDemoMoodboard(imageFile, promptText) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+function createDemoMoodboard(promptText) {
+  const canvas = document.createElement("canvas");
+  const size = 1400;
+  const ctx = canvas.getContext("2d");
+  const palette = getPalette(promptText);
 
-    reader.onload = () => {
-      const image = new Image();
+  canvas.width = size;
+  canvas.height = size;
 
-      image.onload = () => {
-        try {
-          const canvas = document.createElement("canvas");
-          const size = 1400;
-          const ctx = canvas.getContext("2d");
-          const palette = getPalette(promptText);
+  drawDemoBackground(ctx, size, palette);
+  drawDemoSections(ctx, palette);
+  drawDemoTextures(ctx, palette);
+  drawDemoPalette(ctx, palette);
 
-          canvas.width = size;
-          canvas.height = size;
-
-          drawDemoBackground(ctx, size, palette);
-          drawImagePanel(ctx, image, palette);
-          drawColorStory(ctx, palette);
-          drawPromptPanel(ctx, promptText, palette);
-          drawAccentShapes(ctx, palette);
-
-          resolve(canvas.toDataURL("image/png"));
-        } catch (error) {
-          reject(error);
-        }
-      };
-
-      image.onerror = () => reject(new Error("Could not load uploaded image."));
-      image.src = reader.result;
-    };
-
-    reader.onerror = () => reject(new Error("Could not read uploaded image."));
-    reader.readAsDataURL(imageFile);
-  });
+  return canvas.toDataURL("image/png");
 }
 
 function getPalette(promptText) {
   const palettes = [
-    {
-      name: "Мягкий фокус",
-      colors: ["#6a724c", "#dfc8a5", "#b06a48", "#f6ead8", "#8b765c"],
-    },
-    {
-      name: "Тихая галерея",
-      colors: ["#3a2d22", "#e4d3bb", "#c08a5a", "#fbf1e3", "#77815e"],
-    },
-    {
-      name: "Тёплый город",
-      colors: ["#534331", "#b96f4e", "#d1aa66", "#f1e3cd", "#7f825f"],
-    },
-    {
-      name: "Натуральная палитра",
-      colors: ["#596344", "#aeb28a", "#bd7753", "#f7ead7", "#7c6048"],
-    },
+    ["#6a724c", "#dfc8a5", "#b06a48", "#f6ead8", "#8b765c"],
+    ["#3a2d22", "#e4d3bb", "#c08a5a", "#fbf1e3", "#77815e"],
+    ["#534331", "#b96f4e", "#d1aa66", "#f1e3cd", "#7f825f"],
+    ["#596344", "#aeb28a", "#bd7753", "#f7ead7", "#7c6048"],
   ];
 
   let hash = 0;
@@ -373,162 +490,94 @@ function getPalette(promptText) {
 
 function drawDemoBackground(ctx, size, palette) {
   const gradient = ctx.createLinearGradient(0, 0, size, size);
-  gradient.addColorStop(0, "#fbfaf7");
-  gradient.addColorStop(0.52, palette.colors[3]);
-  gradient.addColorStop(1, "#e8efea");
+  gradient.addColorStop(0, "#fbf1e3");
+  gradient.addColorStop(0.48, palette[3]);
+  gradient.addColorStop(1, "#e5d2b8");
+
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, size, size);
 
-  ctx.fillStyle = "rgba(255, 255, 255, 0.52)";
-  roundedRect(ctx, 54, 54, size - 108, size - 108, 46);
+  ctx.fillStyle = "rgba(255, 248, 236, 0.62)";
+  roundedRect(ctx, 70, 70, size - 140, size - 140, 44);
   ctx.fill();
 }
 
-function drawImagePanel(ctx, image, palette) {
-  drawShadow(ctx, 86, 118, 720, 770, 44);
-  roundedRect(ctx, 86, 118, 720, 770, 44);
-  ctx.fillStyle = "#ffffff";
-  ctx.fill();
-  drawCoverImage(ctx, image, 112, 144, 668, 718, 34);
+function drawDemoSections(ctx, palette) {
+  const sections = [
+    [120, 132, 520, 530, palette[1]],
+    [688, 132, 592, 280, palette[4]],
+    [688, 452, 250, 402, palette[2]],
+    [978, 452, 302, 402, palette[0]],
+    [120, 710, 520, 450, "#f8ead6"],
+    [688, 900, 592, 260, "#d7bf94"],
+  ];
 
-  ctx.fillStyle = palette.colors[0];
-  roundedRect(ctx, 132, 786, 208, 52, 26);
-  ctx.fill();
-
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "700 24px Inter, Arial, sans-serif";
-  ctx.fillText("РЕФЕРЕНС", 164, 821);
-}
-
-function drawColorStory(ctx, palette) {
-  ctx.save();
-  ctx.translate(846, 122);
-
-  ctx.fillStyle = "#ffffff";
-  drawShadow(ctx, 0, 0, 430, 338, 34);
-  roundedRect(ctx, 0, 0, 430, 338, 34);
-  ctx.fill();
-
-  ctx.fillStyle = "#232a30";
-  ctx.font = "800 44px Inter, Arial, sans-serif";
-  ctx.fillText("Палитра", 34, 70);
-
-  palette.colors.forEach((color, index) => {
-    const x = 36 + index * 76;
+  sections.forEach(([x, y, width, height, color], index) => {
+    ctx.save();
+    ctx.shadowColor = "rgba(72, 50, 32, 0.14)";
+    ctx.shadowBlur = 28;
+    ctx.shadowOffsetY = 16;
     ctx.fillStyle = color;
-    roundedRect(ctx, x, 112, 58, 150, 28);
+    roundedRect(ctx, x, y, width, height, 34);
+    ctx.fill();
+    ctx.restore();
+
+    if (index % 2 === 0) {
+      addSoftOverlay(ctx, x, y, width, height);
+    }
+  });
+}
+
+function drawDemoTextures(ctx, palette) {
+  ctx.strokeStyle = "rgba(89, 62, 42, 0.14)";
+  ctx.lineWidth = 3;
+
+  for (let x = 150; x < 620; x += 28) {
+    ctx.beginPath();
+    ctx.moveTo(x, 730);
+    ctx.lineTo(x + 42, 1140);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = "rgba(255, 248, 236, 0.38)";
+  ctx.lineWidth = 8;
+
+  for (let y = 180; y < 392; y += 46) {
+    ctx.beginPath();
+    ctx.moveTo(724, y);
+    ctx.bezierCurveTo(832, y - 30, 948, y + 24, 1070, y - 14);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = "rgba(255, 248, 236, 0.58)";
+  ctx.beginPath();
+  ctx.arc(830, 652, 92, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = palette[3];
+  ctx.lineWidth = 12;
+  ctx.beginPath();
+  ctx.moveTo(1010, 648);
+  ctx.bezierCurveTo(1110, 546, 1238, 626, 1240, 760);
+  ctx.stroke();
+}
+
+function drawDemoPalette(ctx, palette) {
+  palette.forEach((color, index) => {
+    const x = 720 + index * 104;
+    ctx.fillStyle = color;
+    roundedRect(ctx, x, 950, 78, 150, 28);
     ctx.fill();
   });
-
-  ctx.fillStyle = "#6f7880";
-  ctx.font = "500 22px Inter, Arial, sans-serif";
-  ctx.fillText(palette.name, 34, 300);
-  ctx.restore();
 }
 
-function drawPromptPanel(ctx, promptText, palette) {
-  drawShadow(ctx, 846, 508, 430, 338, 34);
-  roundedRect(ctx, 846, 508, 430, 338, 34);
-  ctx.fillStyle = "#ffffff";
+function addSoftOverlay(ctx, x, y, width, height) {
+  const gradient = ctx.createLinearGradient(x, y, x + width, y + height);
+  gradient.addColorStop(0, "rgba(255, 255, 255, 0.22)");
+  gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+  ctx.fillStyle = gradient;
+  roundedRect(ctx, x, y, width, height, 34);
   ctx.fill();
-
-  ctx.fillStyle = palette.colors[2];
-  ctx.font = "800 28px Inter, Arial, sans-serif";
-  ctx.fillText("НАПРАВЛЕНИЕ", 888, 574);
-
-  ctx.fillStyle = "#242c31";
-  ctx.font = "700 36px Inter, Arial, sans-serif";
-  wrapText(ctx, promptText, 888, 640, 336, 48, 4);
-
-  ctx.fillStyle = "#6f7880";
-  ctx.font = "500 22px Inter, Arial, sans-serif";
-  ctx.fillText("Демо-мудборд", 888, 790);
-}
-
-function drawAccentShapes(ctx, palette) {
-  drawShadow(ctx, 118, 942, 480, 272, 36);
-  roundedRect(ctx, 118, 942, 480, 272, 36);
-  ctx.fillStyle = palette.colors[1];
-  ctx.fill();
-
-  ctx.fillStyle = "rgba(255, 255, 255, 0.72)";
-  roundedRect(ctx, 154, 980, 190, 196, 28);
-  ctx.fill();
-
-  ctx.fillStyle = palette.colors[0];
-  ctx.beginPath();
-  ctx.arc(448, 1074, 82, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.strokeStyle = palette.colors[2];
-  ctx.lineWidth = 10;
-  ctx.beginPath();
-  ctx.moveTo(700, 1000);
-  ctx.bezierCurveTo(842, 908, 986, 1036, 1126, 938);
-  ctx.stroke();
-
-  ctx.fillStyle = palette.colors[4];
-  roundedRect(ctx, 762, 1046, 432, 170, 32);
-  ctx.fill();
-
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "800 48px Inter, Arial, sans-serif";
-  ctx.fillText("МУДБОРД", 810, 1134);
-}
-
-function drawCoverImage(ctx, image, x, y, width, height, radius) {
-  const scale = Math.max(width / image.width, height / image.height);
-  const sourceWidth = width / scale;
-  const sourceHeight = height / scale;
-  const sourceX = (image.width - sourceWidth) / 2;
-  const sourceY = (image.height - sourceHeight) / 2;
-
-  ctx.save();
-  roundedRect(ctx, x, y, width, height, radius);
-  ctx.clip();
-  ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
-  ctx.restore();
-}
-
-function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
-  const words = text.split(/\s+/);
-  let line = "";
-  let linesDrawn = 0;
-
-  for (let index = 0; index < words.length; index += 1) {
-    const testLine = line ? `${line} ${words[index]}` : words[index];
-    const metrics = ctx.measureText(testLine);
-
-    if (metrics.width > maxWidth && line) {
-      linesDrawn += 1;
-
-      if (linesDrawn === maxLines) {
-        ctx.fillText(`${line.replace(/[.,;:]$/, "")}...`, x, y);
-        return;
-      }
-
-      ctx.fillText(line, x, y);
-      line = words[index];
-      y += lineHeight;
-    } else {
-      line = testLine;
-    }
-  }
-
-  if (line && linesDrawn < maxLines) {
-    ctx.fillText(line, x, y);
-  }
-}
-
-function drawShadow(ctx, x, y, width, height, radius) {
-  ctx.save();
-  ctx.shadowColor = "rgba(31, 41, 47, 0.18)";
-  ctx.shadowBlur = 34;
-  ctx.shadowOffsetY = 18;
-  ctx.fillStyle = "#ffffff";
-  roundedRect(ctx, x, y, width, height, radius);
-  ctx.fill();
-  ctx.restore();
 }
 
 function roundedRect(ctx, x, y, width, height, radius) {
