@@ -1,52 +1,52 @@
-# AI Moodboard Generator
+# Генератор мудбордов
 
-A static one-page website for GitHub Pages. Users upload a reference photo,
-describe the desired mood, generate a moodboard image, and download the result.
+Статический одностраничный сайт для GitHub Pages. Пользователь загружает
+референс, описывает настроение, получает мудборд и может скачать результат.
 
-## Files
+## Файлы
 
-- `index.html` - page markup
-- `style.css` - responsive visual design
-- `script.js` - upload, validation, API request, demo mode, and download logic
-- `README.md` - project notes
+- `index.html` - разметка страницы
+- `style.css` - адаптивный визуальный дизайн
+- `script.js` - загрузка файла, валидация, API-запрос, demo mode и скачивание
+- `README.md` - описание проекта
 
-## Run Locally
+## Локальный запуск
 
-Open `index.html` directly in a browser:
+Можно открыть `index.html` напрямую в браузере:
 
 ```powershell
 Start-Process .\index.html
 ```
 
-Optional, if Python is installed, run a small static server:
+Если установлен Python, можно запустить небольшой статический сервер:
 
 ```bash
 python -m http.server 8000
 ```
 
-Then open:
+Затем открыть:
 
 ```text
 http://localhost:8000/
 ```
 
-## API Setup
+## Настройка API
 
-In `script.js`, replace the placeholders at the top of the file:
+В `script.js` замените значения в начале файла:
 
 ```js
 const API_KEY = "PASTE_YOUR_API_KEY_HERE";
 const API_URL = "PASTE_IMAGE_GENERATION_API_URL_HERE";
 ```
 
-The example request sends `FormData` fields:
+Пример запроса отправляет поля `FormData`:
 
 - `image`
 - `prompt`
 - `style: "moodboard"`
 - `aspect_ratio: "1:1"`
 
-The expected JSON response is:
+Ожидаемый JSON-ответ:
 
 ```json
 {
@@ -54,26 +54,26 @@ The expected JSON response is:
 }
 ```
 
-Important: storing an API key in frontend JavaScript is only acceptable for a
-temporary diploma/demo project. For production, use a backend or serverless
-proxy so the key is not exposed to visitors.
+Важно: хранить API-ключ во frontend JavaScript можно только для временного
+дипломного демо. В реальном проекте запросы нужно переносить на backend или
+serverless-прокси, чтобы ключ не был виден посетителям.
 
 ## Demo Mode
 
-If `API_KEY` is still `PASTE_YOUR_API_KEY_HERE`, the site does not call an API.
-After 2 seconds it generates a downloadable demo moodboard in the browser using
-Canvas and the uploaded reference photo.
+Если `API_KEY` равен `PASTE_YOUR_API_KEY_HERE`, сайт не обращается к API.
+Через 2 секунды он создаёт демо-мудборд прямо в браузере с помощью Canvas и
+загруженного референса.
 
-## Deploy to GitHub Pages
+## Публикация на GitHub Pages
 
-1. Push the project to GitHub.
-2. Open repository settings.
-3. Go to `Settings -> Pages`.
-4. Select `Deploy from a branch`.
-5. Select branch `main` and folder `/root`.
-6. Save.
+1. Загрузите проект в GitHub.
+2. Откройте настройки репозитория.
+3. Перейдите в `Settings -> Pages`.
+4. Выберите `Deploy from a branch`.
+5. Выберите ветку `main` и папку `/root`.
+6. Сохраните настройки.
 
-For this repository, the GitHub Pages URL will be:
+Для этого репозитория ссылка GitHub Pages будет:
 
 ```text
 https://bashevnik.github.io/moonboard_service/

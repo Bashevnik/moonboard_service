@@ -105,7 +105,7 @@ generatorForm.addEventListener("submit", async (event) => {
   } catch (error) {
     console.error(error);
     showError(
-      "Generation failed. Check your API key, API URL, and response format, then try again."
+      "Не удалось создать мудборд. Проверьте API-ключ, адрес API и формат ответа, затем попробуйте снова."
     );
   } finally {
     setGeneratingState(false);
@@ -134,7 +134,7 @@ function handleImageFile(file) {
 
   if (!file.type.startsWith("image/")) {
     clearSelectedImage();
-    showError("Please upload an image file only.");
+    showError("Можно загрузить только файл изображения.");
     return;
   }
 
@@ -157,7 +157,7 @@ function clearSelectedImage() {
   selectedImageFile = null;
   imageInput.value = "";
   previewImage.removeAttribute("src");
-  fileName.textContent = "Selected image";
+  fileName.textContent = "Референс выбран";
   previewWrap.hidden = true;
   dropContent.hidden = false;
   removeImageButton.hidden = true;
@@ -170,11 +170,11 @@ function clearSelectedImage() {
 
 function getValidationError(promptText) {
   if (!selectedImageFile) {
-    return "Please upload a reference photo before generating.";
+    return "Сначала загрузите референс.";
   }
 
   if (!promptText) {
-    return "Please describe the moodboard before generating.";
+    return "Опишите настроение мудборда.";
   }
 
   return "";
@@ -198,7 +198,7 @@ function setGeneratingState(isLoading) {
   promptInput.disabled = isLoading;
   removeImageButton.disabled = isLoading;
   generatorForm.setAttribute("aria-busy", String(isLoading));
-  generateButtonText.textContent = isLoading ? "Generating..." : "Generate Moodboard";
+  generateButtonText.textContent = isLoading ? "Создаём..." : "Создать мудборд";
 }
 
 function showResult(imageUrl) {
@@ -346,20 +346,20 @@ function createDemoMoodboard(imageFile, promptText) {
 function getPalette(promptText) {
   const palettes = [
     {
-      name: "Soft Focus",
-      colors: ["#2f5d58", "#d9c8ae", "#b86c4e", "#f7f4ed", "#6f8f86"],
+      name: "Мягкий фокус",
+      colors: ["#6a724c", "#dfc8a5", "#b06a48", "#f6ead8", "#8b765c"],
     },
     {
-      name: "Gallery Calm",
-      colors: ["#26313a", "#dbe2db", "#c39b6b", "#f8f7f2", "#607d96"],
+      name: "Тихая галерея",
+      colors: ["#3a2d22", "#e4d3bb", "#c08a5a", "#fbf1e3", "#77815e"],
     },
     {
-      name: "Urban Warmth",
-      colors: ["#33424a", "#b85f49", "#d6b64f", "#eef2ea", "#788b7d"],
+      name: "Тёплый город",
+      colors: ["#534331", "#b96f4e", "#d1aa66", "#f1e3cd", "#7f825f"],
     },
     {
-      name: "Natural Edit",
-      colors: ["#28453f", "#9fb2a0", "#bf7658", "#f4f1e8", "#4d6d82"],
+      name: "Натуральная палитра",
+      colors: ["#596344", "#aeb28a", "#bd7753", "#f7ead7", "#7c6048"],
     },
   ];
 
@@ -397,7 +397,7 @@ function drawImagePanel(ctx, image, palette) {
 
   ctx.fillStyle = "#ffffff";
   ctx.font = "700 24px Inter, Arial, sans-serif";
-  ctx.fillText("REFERENCE", 164, 821);
+  ctx.fillText("РЕФЕРЕНС", 164, 821);
 }
 
 function drawColorStory(ctx, palette) {
@@ -411,7 +411,7 @@ function drawColorStory(ctx, palette) {
 
   ctx.fillStyle = "#232a30";
   ctx.font = "800 44px Inter, Arial, sans-serif";
-  ctx.fillText("Color story", 34, 70);
+  ctx.fillText("Палитра", 34, 70);
 
   palette.colors.forEach((color, index) => {
     const x = 36 + index * 76;
@@ -434,7 +434,7 @@ function drawPromptPanel(ctx, promptText, palette) {
 
   ctx.fillStyle = palette.colors[2];
   ctx.font = "800 28px Inter, Arial, sans-serif";
-  ctx.fillText("MOOD DIRECTION", 888, 574);
+  ctx.fillText("НАПРАВЛЕНИЕ", 888, 574);
 
   ctx.fillStyle = "#242c31";
   ctx.font = "700 36px Inter, Arial, sans-serif";
@@ -442,7 +442,7 @@ function drawPromptPanel(ctx, promptText, palette) {
 
   ctx.fillStyle = "#6f7880";
   ctx.font = "500 22px Inter, Arial, sans-serif";
-  ctx.fillText("Generated demo moodboard", 888, 790);
+  ctx.fillText("Демо-мудборд", 888, 790);
 }
 
 function drawAccentShapes(ctx, palette) {
@@ -473,7 +473,7 @@ function drawAccentShapes(ctx, palette) {
 
   ctx.fillStyle = "#ffffff";
   ctx.font = "800 48px Inter, Arial, sans-serif";
-  ctx.fillText("AI MOODBOARD", 810, 1134);
+  ctx.fillText("МУДБОРД", 810, 1134);
 }
 
 function drawCoverImage(ctx, image, x, y, width, height, radius) {

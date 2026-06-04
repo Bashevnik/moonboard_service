@@ -1,49 +1,59 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Upload a photo, describe the mood, and generate your AI moodboard."
+      content="Загрузите фото, опишите настроение, и сервис соберёт визуальный мудборд."
     />
-    <title>AI Moodboard Generator</title>
+    <title>Генератор мудбордов</title>
     <link rel="stylesheet" href="style.css" />
     <script src="script.js" defer></script>
   </head>
   <body>
     <header class="site-header">
-      <a class="brand" href="#top" aria-label="AI Moodboard Generator home">
+      <a class="brand" href="#top" aria-label="Главная страница генератора мудбордов">
         <span class="brand-mark" aria-hidden="true"></span>
-        <span>AI Moodboard Generator</span>
+        <span>Генератор мудбордов</span>
       </a>
-      <a class="header-action" href="#generator">Start creating</a>
+      <a class="header-action" href="#generator">Начать</a>
     </header>
 
     <main id="top">
       <section class="hero-shell" aria-labelledby="pageTitle">
         <div class="hero-copy">
-          <p class="eyebrow">Creative studio tool</p>
-          <h1 id="pageTitle">AI Moodboard Generator</h1>
+          <p class="eyebrow">Инструмент для визуальных идей</p>
+          <h1 id="pageTitle">Генератор мудбордов</h1>
           <p class="hero-lead">
-            Upload a photo, describe the mood, and generate your AI moodboard
+            Загрузите фото, опишите настроение, и сервис соберёт визуальный мудборд
           </p>
-          <div class="hero-details" aria-label="Generator highlights">
-            <span>Reference photo</span>
-            <span>Prompt guided</span>
-            <span>Download ready</span>
+          <p class="hero-note">
+            Подходит для бренда, интерьера, фотосессии, сайта или презентации.
+          </p>
+          <div class="hero-details" aria-label="Где можно использовать мудборд">
+            <span>Бренд</span>
+            <span>Интерьер</span>
+            <span>Фотосессия</span>
+            <span>Презентация</span>
+          </div>
+
+          <div class="atelier-strip" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
           </div>
         </div>
 
         <section class="generator-panel" id="generator" aria-labelledby="generatorTitle">
           <div class="panel-heading">
-            <p class="eyebrow">Create moodboard</p>
-            <h2 id="generatorTitle">Turn a reference into a visual direction</h2>
+            <p class="eyebrow">Мастерская мудборда</p>
+            <h2 id="generatorTitle">Превратите референс в визуальное направление</h2>
           </div>
 
           <form class="generator-form" id="generatorForm" novalidate>
             <div class="field-group">
-              <label for="imageInput">Upload reference photo</label>
+              <label for="imageInput">Загрузите референс</label>
               <div
                 class="drop-zone"
                 id="dropZone"
@@ -60,35 +70,35 @@
                       <path d="M5 14v4a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-4" />
                     </svg>
                   </span>
-                  <strong>Drop image here or browse</strong>
-                  <span>PNG, JPG, WEBP and other image formats</span>
+                  <strong>Перетащите изображение сюда или выберите файл</strong>
+                  <span>PNG, JPG, WEBP и другие форматы</span>
                 </div>
 
                 <div class="preview" id="previewWrap" hidden>
-                  <img id="previewImage" alt="Uploaded reference preview" />
+                  <img id="previewImage" alt="Превью загруженного референса" />
                   <div class="preview-meta">
-                    <strong id="fileName">Selected image</strong>
-                    <span>Ready to generate</span>
+                    <strong id="fileName">Референс выбран</strong>
+                    <span>Можно создавать мудборд</span>
                   </div>
                 </div>
               </div>
               <button class="ghost-button remove-image-button" id="removeImageButton" type="button" hidden>
-                Remove photo
+                Убрать фото
               </button>
               <p class="field-hint">
-                Use a clear photo with colors, texture, objects, or lighting you want to keep.
+                Лучше всего работают фотографии с понятными цветами, фактурами и светом.
               </p>
             </div>
 
             <div class="field-group">
-              <label for="promptInput">Describe your moodboard</label>
+              <label for="promptInput">Опишите мудборд</label>
               <textarea
                 id="promptInput"
                 rows="5"
-                placeholder="Example: calm coastal studio, natural linen, sage accents, warm morning light"
+                placeholder="Например: спокойная студия у моря, натуральный лён, оливковые акценты, мягкий утренний свет"
               ></textarea>
               <p class="field-hint">
-                Mention style, colors, materials, setting, lighting, and emotional tone.
+                Добавьте стиль, цвета, материалы, настроение, свет и детали сцены.
               </p>
             </div>
 
@@ -102,13 +112,13 @@
                   <path d="M21 5h-4" />
                 </svg>
               </span>
-              <span class="button-text">Generate Moodboard</span>
+              <span class="button-text">Создать мудборд</span>
             </button>
           </form>
 
           <div class="loader" id="loader" aria-live="polite" hidden>
             <span class="spinner" aria-hidden="true"></span>
-            <span>Generating your moodboard...</span>
+            <span>Собираем мудборд...</span>
           </div>
         </section>
       </section>
@@ -116,11 +126,11 @@
       <section class="result-section" id="resultSection" aria-live="polite" hidden>
         <div class="result-card">
           <div class="result-copy">
-            <p class="eyebrow">Result</p>
-            <h2>Your moodboard is ready</h2>
+            <p class="eyebrow">Готово</p>
+            <h2>Мудборд готов</h2>
             <p>
-              Save the generated image to your computer or phone, then create another
-              direction whenever you want.
+              Скачайте изображение на компьютер или телефон, а затем соберите ещё
+              одно направление с другим настроением.
             </p>
 
             <div class="result-actions">
@@ -131,7 +141,7 @@
                     <path d="M5 19h14" />
                   </svg>
                 </span>
-                <span>Download Moodboard</span>
+                <span>Скачать мудборд</span>
               </button>
               <button class="secondary-button" id="generateAgainButton" type="button">
                 <span class="button-icon" aria-hidden="true">
@@ -142,20 +152,20 @@
                     <path d="M20 19v-6h-6" />
                   </svg>
                 </span>
-                <span>Generate Again</span>
+                <span>Создать заново</span>
               </button>
             </div>
           </div>
 
           <div class="result-image-wrap">
-            <img id="resultImage" alt="Generated moodboard" />
+            <img id="resultImage" alt="Сгенерированный мудборд" />
           </div>
         </div>
       </section>
     </main>
 
     <footer class="site-footer">
-      <span>Static GitHub Pages project</span>
+      <span>Статический проект для GitHub Pages</span>
       <span>HTML, CSS, Vanilla JavaScript</span>
     </footer>
   </body>
