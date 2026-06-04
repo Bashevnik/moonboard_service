@@ -1,8 +1,8 @@
 const GEMINI_API_KEY = "PASTE_GEMINI_API_KEY_HERE";
 
 // Для дипломного демо ключ временно хранится во frontend JS.
-// В реальном проекте так делать нельзя: API-ключ нужно держать на backend
-// или serverless-прокси, чтобы посетители сайта не могли его увидеть.
+// В реальном продукте так делать нельзя: API-ключ должен жить на backend
+// или в serverless-прокси, иначе посетители сайта увидят его в исходном коде.
 
 const GEMINI_MODEL = "gemini-3.1-flash-image";
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent`;
@@ -25,6 +25,12 @@ const resultImage = document.getElementById("resultImage");
 const emptyState = document.getElementById("emptyState");
 const resultStatus = document.getElementById("resultStatus");
 const resultMeta = document.getElementById("resultMeta");
+const paletteSwatches = document.getElementById("paletteSwatches");
+const referenceTags = document.getElementById("referenceTags");
+const keywordTags = document.getElementById("keywordTags");
+const materialTags = document.getElementById("materialTags");
+const typePairing = document.getElementById("typePairing");
+const compositionNote = document.getElementById("compositionNote");
 const downloadButton = document.getElementById("downloadButton");
 const generateAgainButton = document.getElementById("generateAgainButton");
 const zoomButton = document.getElementById("zoomButton");
@@ -32,6 +38,48 @@ const openPreviewButton = document.getElementById("openPreviewButton");
 const imageModal = document.getElementById("imageModal");
 const modalImage = document.getElementById("modalImage");
 const closeModalButton = document.getElementById("closeModalButton");
+
+const PALETTE_PRESETS = [
+  {
+    match: ["олив", "зел", "forest", "botanical", "nature", "garden"],
+    colors: ["#1E1E1E", "#617A55", "#A46C44", "#D7C7AF", "#F8F7F4"],
+  },
+  {
+    match: ["fashion", "editorial", "кампейн", "сьем", "съем", "brand", "бренд"],
+    colors: ["#1E1E1E", "#6F6F6F", "#A46C44", "#E8E4DC", "#FFFFFF"],
+  },
+  {
+    match: ["интерьер", "дерево", "linen", "wood", "ceramic", "камень", "stone"],
+    colors: ["#2C2621", "#8E5A37", "#B99B78", "#E8E4DC", "#F3F1EC"],
+  },
+  {
+    match: ["сайт", "digital", "app", "product", "минимал", "clean"],
+    colors: ["#1E1E1E", "#3B3B3B", "#A46C44", "#E8E4DC", "#FFFFFF"],
+  },
+];
+
+const DEFAULT_PALETTE = ["#1E1E1E", "#6F6F6F", "#A46C44", "#C9B79E", "#F8F7F4"];
+const DEFAULT_REFERENCES = ["hero-кадр", "детали", "свет", "ритм", "контекст"];
+const DEFAULT_KEYWORDS = ["спокойно", "дорого", "цельно", "редакционно"];
+const DEFAULT_MATERIALS = ["натуральная фактура", "мягкий свет", "матовая поверхность", "тонкая тень"];
+const STOP_WORDS = new Set([
+  "для",
+  "или",
+  "как",
+  "это",
+  "через",
+  "очень",
+  "with",
+  "and",
+  "the",
+  "for",
+  "from",
+  "this",
+  "that",
+  "visual",
+  "moodboard",
+  "board",
+]);
 
 let selectedImageFile = null;
 let previewObjectUrl = "";
@@ -188,11 +236,11 @@ function getValidationError(promptText) {
   }
 
   if (!promptText) {
-    return "Опишите настроение и задачу для мудборда.";
+    return "Опишите настроение, стиль и задачу для мудборда.";
   }
 
-  if (!GEMINI_API_KEY.trim()) {
-    return "Добавьте GEMINI_API_KEY в script.js.";
+  if (!GEMINI_API_KEY.trim() || GEMINI_API_KEY === "PASTE_GEMINI_API_KEY_HERE") {
+    return "Добавьте реальный GEMINI_API_KEY в начало файла script.js.";
   }
 
   return "";
@@ -216,7 +264,7 @@ function setGeneratingState(isLoading) {
   promptInput.disabled = isLoading;
   removeImageButton.disabled = isLoading;
   generatorForm.setAttribute("aria-busy", String(isLoading));
-  generateButtonText.textContent = isLoading ? "Генерация..." : "Создать мудборд";
+  generateButtonText.textContent = isLoading ? "Создаём мудборд..." : "Создать мудборд";
 
   if (isLoading) {
     setResultStatus("Запрос к Gemini", false);
@@ -239,9 +287,30 @@ function fileToBase64(file) {
 }
 
 async function generateMoodboardWithGemini(imageFile, promptText) {
-  const requestStartedAt = performance.now();
   const base64Image = await fileToBase64(imageFile);
   const requestBody = buildGeminiRequestBody(imageFile, base64Image, promptText);
+  const result = await sendGeminiRequest(requestBody, imageFile, promptText);
+
+  if (!result.response.ok) {
+    throw new Error(getGeminiErrorMessage(result.data, result.response.status));
+  }
+
+  const imageUrl = extractImageFromGeminiResponse(result.data);
+
+  if (!imageUrl) {
+    const textResponse = extractTextFromGeminiResponse(result.data);
+    const detail = textResponse ? ` Ответ Gemini: ${textResponse}` : "";
+
+    throw new Error(
+      `Gemini ответил без изображения. Проверьте, что для ключа доступна генерация изображений.${detail}`
+    );
+  }
+
+  return imageUrl;
+}
+
+async function sendGeminiRequest(requestBody, imageFile, promptText) {
+  const requestStartedAt = performance.now();
 
   console.info("[Moodboard] start request", {
     endpoint: GEMINI_API_URL,
@@ -249,7 +318,7 @@ async function generateMoodboardWithGemini(imageFile, promptText) {
     fileName: imageFile.name,
     fileType: imageFile.type,
     promptLength: promptText.length,
-    usingPlaceholderKey: GEMINI_API_KEY === "PASTE_GEMINI_API_KEY_HERE",
+    keyConfigured: Boolean(GEMINI_API_KEY.trim()),
   });
 
   const response = await fetch(GEMINI_API_URL, {
@@ -270,19 +339,7 @@ async function generateMoodboardWithGemini(imageFile, promptText) {
     data,
   });
 
-  if (!response.ok) {
-    throw new Error(getGeminiErrorMessage(data, response.status));
-  }
-
-  const imageUrl = extractImageFromGeminiResponse(data);
-
-  if (!imageUrl) {
-    throw new Error(
-      "Gemini ответил без изображения. Попробуйте уточнить описание или проверьте доступность image generation для ключа."
-    );
-  }
-
-  return imageUrl;
+  return { response, data };
 }
 
 function buildGeminiRequestBody(imageFile, base64Image, promptText) {
@@ -307,8 +364,10 @@ function buildGeminiRequestBody(imageFile, base64Image, promptText) {
 function buildGeminiPrompt(promptText) {
   return `Create a beautiful visual moodboard based on the uploaded reference image and this description: ${promptText}.
 Use the reference image only as inspiration for colors, textures, mood, lighting and visual direction.
-Generate one square moodboard image with multiple aesthetic sections, color palette, material textures, visual references, and cohesive composition.
-No text, no watermark, no logos.`;
+Generate one square 1:1 creative direction moodboard image.
+The result should look like a polished Behance moodboard, Pinterest editorial board, fashion campaign board, or premium creative direction board.
+Include a strong main visual, supporting reference panels, color palette, material textures, lighting references, typography mood samples as abstract shapes only, and a cohesive editorial composition.
+No readable text, no watermark, no logos.`;
 }
 
 async function parseJsonResponse(response) {
@@ -360,6 +419,15 @@ function extractImageFromGeminiResponse(data) {
   return "";
 }
 
+function extractTextFromGeminiResponse(data) {
+  const parts = data?.candidates?.flatMap((candidate) => candidate?.content?.parts || []) || [];
+  return parts
+    .map((part) => part.text)
+    .filter(Boolean)
+    .join(" ")
+    .slice(0, 280);
+}
+
 function findImageUrl(value) {
   if (!value || typeof value !== "object") {
     return "";
@@ -406,6 +474,7 @@ function renderResult(imageUrl) {
     hour: "2-digit",
     minute: "2-digit",
   })}`;
+  renderDirectionDetails(promptInput.value.trim());
   setResultStatus("Готово", true);
   resultSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
@@ -416,7 +485,120 @@ function hideResult() {
   modalImage.removeAttribute("src");
   resultSection.hidden = true;
   emptyState.hidden = false;
+  clearDirectionDetails();
   setResultStatus("Ожидает данных", false);
+}
+
+function renderDirectionDetails(promptText) {
+  const tokens = extractPromptTokens(promptText);
+  const palette = pickPalette(promptText);
+  const references = mergeUnique(tokens.slice(0, 2), DEFAULT_REFERENCES).slice(0, 5);
+  const keywords = mergeUnique(tokens, DEFAULT_KEYWORDS).slice(0, 6);
+  const materials = pickMaterials(promptText, tokens);
+
+  renderPalette(palette);
+  renderTagList(referenceTags, references);
+  renderTagList(keywordTags, keywords);
+  renderTagList(materialTags, materials);
+
+  typePairing.textContent = pickTypePairing(promptText);
+  compositionNote.textContent =
+    "Крупный центральный образ, дополнительные визуальные фрагменты, палитра, фактуры и детали собраны в единую editorial-композицию для презентации идеи.";
+}
+
+function clearDirectionDetails() {
+  paletteSwatches.innerHTML = "";
+  referenceTags.innerHTML = "";
+  keywordTags.innerHTML = "";
+  materialTags.innerHTML = "";
+}
+
+function renderPalette(colors) {
+  paletteSwatches.innerHTML = "";
+
+  colors.forEach((color) => {
+    const swatch = document.createElement("span");
+    swatch.style.background = color;
+    swatch.setAttribute("aria-label", color);
+    paletteSwatches.appendChild(swatch);
+  });
+}
+
+function renderTagList(container, values) {
+  container.innerHTML = "";
+
+  values.forEach((value) => {
+    const tag = document.createElement("span");
+    tag.textContent = value;
+    container.appendChild(tag);
+  });
+}
+
+function extractPromptTokens(promptText) {
+  const words = promptText.toLowerCase().match(/[\p{L}\p{N}-]+/gu) || [];
+
+  return mergeUnique(
+    words
+      .map((word) => word.replace(/^-+|-+$/g, ""))
+      .filter((word) => word.length > 3 && !STOP_WORDS.has(word))
+      .slice(0, 10),
+    []
+  );
+}
+
+function pickPalette(promptText) {
+  const normalized = promptText.toLowerCase();
+  const preset = PALETTE_PRESETS.find((item) => item.match.some((word) => normalized.includes(word)));
+  return preset?.colors || DEFAULT_PALETTE;
+}
+
+function pickMaterials(promptText, tokens) {
+  const normalized = promptText.toLowerCase();
+  const materials = [];
+
+  if (normalized.includes("дерев") || normalized.includes("wood")) materials.push("дерево");
+  if (normalized.includes("кам") || normalized.includes("stone")) materials.push("камень");
+  if (normalized.includes("лен") || normalized.includes("linen")) materials.push("лён");
+  if (normalized.includes("керами") || normalized.includes("ceramic")) materials.push("керамика");
+  if (normalized.includes("металл") || normalized.includes("metal")) materials.push("металл");
+  if (normalized.includes("стек") || normalized.includes("glass")) materials.push("стекло");
+
+  return mergeUnique(materials, tokens.slice(0, 2), DEFAULT_MATERIALS).slice(0, 5);
+}
+
+function pickTypePairing(promptText) {
+  const normalized = promptText.toLowerCase();
+
+  if (normalized.includes("fashion") || normalized.includes("editorial") || normalized.includes("кампейн")) {
+    return "Inter / Editorial Sans";
+  }
+
+  if (normalized.includes("brand") || normalized.includes("бренд")) {
+    return "Inter / Brand Grotesk";
+  }
+
+  if (normalized.includes("сайт") || normalized.includes("digital") || normalized.includes("app")) {
+    return "Inter / Product Sans";
+  }
+
+  return "Inter / Studio Sans";
+}
+
+function mergeUnique(...groups) {
+  const seen = new Set();
+  const result = [];
+
+  groups.flat().forEach((value) => {
+    const normalized = String(value || "").trim();
+    const key = normalized.toLowerCase();
+
+    if (normalized && !seen.has(key)) {
+      seen.add(key);
+      result.push(normalized);
+    }
+  });
+
+  return result;
 }
 
 async function downloadGeneratedImage() {
@@ -448,7 +630,7 @@ async function downloadGeneratedImage() {
     const opened = window.open(currentMoodboardUrl, "_blank", "noopener,noreferrer");
 
     if (!opened) {
-      showError("Браузер заблокировал скачивание. Откройте результат в новой вкладке.");
+      showError("Браузер заблокировал скачивание. Откройте результат в новом окне и сохраните изображение.");
     }
   }
 }
@@ -477,7 +659,10 @@ function openImageModal() {
 function closeImageModal() {
   imageModal.hidden = true;
   document.body.classList.remove("modal-open");
-  zoomButton.focus();
+
+  if (!resultSection.hidden) {
+    zoomButton.focus();
+  }
 }
 
 function setResultStatus(text, isReady) {
@@ -490,19 +675,27 @@ function getGeminiErrorMessage(data, status) {
   const normalizedMessage = String(apiMessage || "").toLowerCase();
 
   if (normalizedMessage.includes("api key not valid") || normalizedMessage.includes("api_key_invalid")) {
-    return "API-ключ Gemini недействителен. Замените GEMINI_API_KEY в script.js на реальный ключ.";
+    return "API-ключ Gemini недействителен. Проверьте ключ в начале файла script.js.";
   }
 
   if (normalizedMessage.includes("api key")) {
-    return "Проблема с API-ключом Gemini. Проверьте GEMINI_API_KEY в script.js.";
+    return "Проблема с API-ключом Gemini. Проверьте ключ в script.js.";
+  }
+
+  if (normalizedMessage.includes("billing") || normalizedMessage.includes("quota")) {
+    return "Gemini не выполнил запрос из-за лимита, квоты или биллинга. Проверьте настройки проекта Google AI Studio.";
+  }
+
+  if (normalizedMessage.includes("not found") || normalizedMessage.includes("not supported")) {
+    return "Выбранная модель Gemini недоступна для этого ключа или региона. Проверьте доступ к image generation.";
   }
 
   if (status === 400) {
-    return "Gemini отклонил запрос. Проверьте формат изображения и описание.";
+    return "Gemini отклонил запрос. Проверьте формат изображения и описание мудборда.";
   }
 
   if (status === 401 || status === 403) {
-    return "Gemini не принял API-ключ. Проверьте GEMINI_API_KEY в script.js.";
+    return "Gemini не принял API-ключ. Проверьте ключ и доступ к модели image generation.";
   }
 
   if (status === 429) {
@@ -513,5 +706,5 @@ function getGeminiErrorMessage(data, status) {
 }
 
 function getReadableApiError(error) {
-  return error?.message || "Не удалось создать мудборд. Проверьте API и попробуйте ещё раз.";
+  return error?.message || "Не удалось создать мудборд. Проверьте Gemini API и попробуйте ещё раз.";
 }

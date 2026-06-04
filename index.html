@@ -5,49 +5,60 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Сервис для генерации мудбордов по референсу и текстовому описанию через Google Gemini."
+      content="Профессиональный генератор мудбордов по референсу и описанию через Google Gemini."
     />
     <title>Генератор мудбордов</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="style.css" />
     <script src="script.js" defer></script>
   </head>
   <body>
-    <header class="topbar">
+    <header class="app-header">
       <a class="brand" href="#top" aria-label="Генератор мудбордов">
-        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-mark" aria-hidden="true">М</span>
         <span>Генератор мудбордов</span>
       </a>
 
-      <div class="topbar-meta" aria-label="Информация о сервисе">
+      <nav class="header-actions" aria-label="Навигация">
         <span>Gemini Image API</span>
         <a href="#generator">Создать</a>
-      </div>
+      </nav>
     </header>
 
-    <main class="product-shell" id="top">
-      <section class="product-intro" aria-labelledby="pageTitle">
-        <div>
-          <p class="eyebrow">Рабочее пространство для визуальных направлений</p>
-          <h1 id="pageTitle">Соберите мудборд из референса за один запрос</h1>
+    <main class="app-shell" id="top">
+      <section class="intro" aria-labelledby="pageTitle">
+        <div class="intro-copy">
+          <p class="eyebrow">Инструмент визуального направления</p>
+          <h1 id="pageTitle">Мудборд из референса и описания</h1>
+          <p>
+            Загрузите изображение, опишите визуальное направление и получите
+            готовый moodboard для бренда, съёмки, интерьера или презентации.
+          </p>
         </div>
-        <p>
-          Загрузите изображение, опишите настроение и получите квадратный мудборд
-          для бренда, интерьера, фотосессии, сайта или презентации.
-        </p>
+        <div class="intro-meta" aria-label="Возможности сервиса">
+          <span>Фото + описание</span>
+          <span>Квадратный мудборд</span>
+          <span>Готов к скачиванию</span>
+        </div>
       </section>
 
-      <section class="workspace" id="generator" aria-label="Генератор мудборда">
-        <aside class="control-panel">
-          <div class="panel-heading">
-            <span class="step-label">Новый мудборд</span>
+      <section class="workspace" id="generator" aria-label="Рабочее пространство генератора">
+        <aside class="input-card">
+          <div class="card-heading">
+            <p class="eyebrow">Ввод</p>
             <h2>Исходные данные</h2>
           </div>
 
           <form class="generator-form" id="generatorForm" novalidate>
             <div class="field-group">
-              <div class="label-row">
+              <div class="field-label">
                 <label for="imageInput">Референс</label>
-                <span>Обязательное поле</span>
+                <span>Фото или коллаж</span>
               </div>
 
               <div
@@ -66,39 +77,34 @@
                       <path d="M5 15v3a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-3" />
                     </svg>
                   </span>
-                  <strong>Перетащите изображение или выберите файл</strong>
-                  <span>PNG, JPG, WEBP</span>
+                  <strong>Перетащите изображение сюда</strong>
+                  <span>или выберите файл PNG, JPG, WEBP</span>
                 </div>
 
                 <div class="preview" id="previewWrap" hidden>
                   <img id="previewImage" alt="Превью загруженного референса" />
                   <div class="preview-meta">
                     <strong id="fileName">Файл выбран</strong>
-                    <span>Изображение готово к отправке</span>
+                    <span>Готово к генерации</span>
                   </div>
                 </div>
               </div>
 
-              <div class="field-actions">
-                <button class="text-button" id="removeImageButton" type="button" hidden>
-                  Убрать файл
-                </button>
-              </div>
+              <button class="text-button" id="removeImageButton" type="button" hidden>
+                Убрать файл
+              </button>
             </div>
 
             <div class="field-group">
-              <div class="label-row">
-                <label for="promptInput">Описание</label>
-                <span>Что нужно собрать</span>
+              <div class="field-label">
+                <label for="promptInput">Описание мудборда</label>
+                <span>Стиль, материалы, настроение</span>
               </div>
               <textarea
                 id="promptInput"
-                rows="6"
-                placeholder="Например: минималистичный бренд для кофейни, тёплый свет, натуральное дерево, спокойная типографика, оливковые и молочные оттенки"
+                rows="7"
+                placeholder="Например: editorial campaign для премиального бренда, спокойный свет, натуральные материалы, тёплая палитра, минимальная типографика, ощущение камерной студии"
               ></textarea>
-              <p class="field-hint">
-                Укажите стиль, цвет, материалы, свет, настроение и назначение мудборда.
-              </p>
             </div>
 
             <div class="error-message" id="formError" role="alert" hidden></div>
@@ -114,70 +120,89 @@
 
             <div class="loader" id="loader" aria-live="polite" hidden>
               <span class="spinner" aria-hidden="true"></span>
-              <span>Отправляем запрос в Gemini...</span>
+              <span>Gemini собирает визуальное направление...</span>
             </div>
           </form>
 
           <p class="security-note">
-            На GitHub Pages запрос идёт напрямую из браузера. Это работает для
-            дипломного демо, но API-ключ будет виден в коде. Для продакшена нужен
-            serverless-прокси.
+            Для дипломного демо запрос выполняется из браузера. На публичном
+            GitHub Pages API-ключ будет виден в frontend-коде.
           </p>
         </aside>
 
-        <section class="result-panel" aria-labelledby="resultTitle">
+        <section class="output-card" aria-labelledby="resultTitle">
           <div class="result-header">
             <div>
-              <span class="step-label">Результат</span>
-              <h2 id="resultTitle">Просмотр мудборда</h2>
+              <p class="eyebrow">Результат</p>
+              <h2 id="resultTitle">Визуальное направление</h2>
             </div>
             <span class="status-pill" id="resultStatus">Ожидает данных</span>
           </div>
 
           <div class="empty-state" id="emptyState">
-            <div class="empty-preview" aria-hidden="true">
-              <span></span>
+            <div class="empty-board" aria-hidden="true">
               <span></span>
               <span></span>
               <span></span>
             </div>
-            <h3>Здесь появится сгенерированное изображение</h3>
+            <h3>Результат появится здесь</h3>
             <p>
-              После успешного ответа Gemini вы сможете увеличить мудборд и скачать
-              его на устройство.
+              После генерации вы увидите крупный мудборд, сможете открыть его в
+              полноэкранном просмотре и скачать на устройство.
             </p>
           </div>
 
           <div class="result-view" id="resultSection" hidden>
-            <button class="image-frame" id="zoomButton" type="button" aria-label="Увеличить мудборд">
+            <button class="moodboard-frame" id="zoomButton" type="button" aria-label="Увеличить мудборд">
               <img id="resultImage" alt="Сгенерированный мудборд" />
             </button>
 
-            <div class="result-toolbar">
+            <div class="result-actions">
               <div>
                 <strong>Мудборд готов</strong>
                 <span id="resultMeta">Сгенерировано через Gemini</span>
               </div>
-
               <div class="toolbar-actions">
-                <button class="secondary-button" id="openPreviewButton" type="button">
-                  <span class="button-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" focusable="false">
-                      <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-                      <path d="M16 3h3a2 2 0 0 1 2 2v3" />
-                      <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
-                      <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-                    </svg>
-                  </span>
-                  Увеличить
-                </button>
-                <button class="secondary-button" id="generateAgainButton" type="button">
-                  Снова
-                </button>
-                <button class="primary-button compact" id="downloadButton" type="button">
-                  Скачать
-                </button>
+                <button class="secondary-button" id="openPreviewButton" type="button">Увеличить</button>
+                <button class="secondary-button" id="generateAgainButton" type="button">Изменить</button>
+                <button class="primary-button compact" id="downloadButton" type="button">Скачать</button>
               </div>
+            </div>
+
+            <div class="direction-grid" aria-label="Детали визуального направления">
+              <article class="direction-card palette-card">
+                <span>Палитра</span>
+                <div class="palette-swatches" id="paletteSwatches"></div>
+              </article>
+
+              <article class="direction-card">
+                <span>Референсы</span>
+                <div class="tag-list" id="referenceTags"></div>
+              </article>
+
+              <article class="direction-card">
+                <span>Ключевые слова</span>
+                <div class="tag-list" id="keywordTags"></div>
+              </article>
+
+              <article class="direction-card">
+                <span>Материалы и фактуры</span>
+                <div class="tag-list" id="materialTags"></div>
+              </article>
+
+              <article class="direction-card type-card">
+                <span>Типографика</span>
+                <strong id="typePairing">Inter / Editorial Sans</strong>
+                <p>Сдержанная гротескная пара для презентаций и digital-носителей.</p>
+              </article>
+
+              <article class="direction-card wide">
+                <span>Композиция</span>
+                <p id="compositionNote">
+                  Центральный hero-кадр, поддерживающие референсы, палитра и
+                  фактуры в единой editorial-сетке.
+                </p>
+              </article>
             </div>
           </div>
         </section>
