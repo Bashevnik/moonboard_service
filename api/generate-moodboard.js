@@ -1,5 +1,5 @@
-const GEMINI_MODEL = "gemini-3.1-flash-image";
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent`;
+const GEMINI_MODEL = "gemini-2.5-flash-image";
+const GEMINI_FALLBACK_MODEL = "gemini-2.5-flash-image-preview";
 const MAX_IMAGE_BASE64_LENGTH = 8 * 1024 * 1024;
 
 module.exports = async function handler(request, response) {
@@ -42,31 +42,24 @@ module.exports = async function handler(request, response) {
       return;
     }
 
-    console.info("[Moodboard API] start Gemini request", {
-      model: GEMINI_MODEL,
-      fileName: body.fileName || "uploaded-image",
+    const geminiResult = await requestGeminiWithFallback({
+      apiKey,
+      imageBase64,
       mimeType,
-      promptLength: prompt.length,
-      imageBytesApprox: Math.round((imageBase64.length * 3) / 4),
+      prompt,
+      fileName: body.fileName || "uploaded-image",
     });
-
-    const geminiResponse = await fetch(GEMINI_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify(buildGeminiRequestBody({ imageBase64, mimeType, prompt })),
-    });
-
-    const geminiData = await parseJsonResponse(geminiResponse);
-
-    console.info("[Moodboard API] Gemini response", {
-      ok: geminiResponse.ok,
-      status: geminiResponse.status,
-    });
+    const { geminiResponse, geminiData, model } = geminiResult;
 
     if (!geminiResponse.ok) {
+      console.error("[Moodboard API] raw Gemini error response", {
+        model,
+        status: geminiResponse.status,
+        statusText: geminiResponse.statusText,
+        rawResponse: geminiResult.rawText,
+        parsedResponse: geminiData,
+      });
+
       sendJson(response, geminiResponse.status, {
         error: getReadableGeminiError(geminiData, geminiResponse.status),
       });
@@ -87,7 +80,7 @@ module.exports = async function handler(request, response) {
 
     sendJson(response, 200, {
       imageUrl,
-      model: GEMINI_MODEL,
+      model,
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
@@ -97,6 +90,78 @@ module.exports = async function handler(request, response) {
     });
   }
 };
+
+async function requestGeminiWithFallback({ apiKey, imageBase64, mimeType, prompt, fileName }) {
+  const primaryResult = await requestGeminiModel({
+    apiKey,
+    imageBase64,
+    mimeType,
+    prompt,
+    fileName,
+    model: GEMINI_MODEL,
+  });
+
+  if (primaryResult.geminiResponse.ok || !isModelNotFoundError(primaryResult.geminiData)) {
+    return primaryResult;
+  }
+
+  console.error("[Moodboard API] Gemini model not found, trying fallback", {
+    model: GEMINI_MODEL,
+    fallbackModel: GEMINI_FALLBACK_MODEL,
+    status: primaryResult.geminiResponse.status,
+    rawResponse: primaryResult.rawText,
+    parsedResponse: primaryResult.geminiData,
+  });
+
+  return requestGeminiModel({
+    apiKey,
+    imageBase64,
+    mimeType,
+    prompt,
+    fileName,
+    model: GEMINI_FALLBACK_MODEL,
+  });
+}
+
+async function requestGeminiModel({ apiKey, imageBase64, mimeType, prompt, fileName, model }) {
+  const geminiApiUrl = getGeminiApiUrl(model);
+
+  console.info("[Moodboard API] start Gemini request", {
+    model,
+    fileName,
+    mimeType,
+    promptLength: prompt.length,
+    imageBytesApprox: Math.round((imageBase64.length * 3) / 4),
+  });
+
+  const geminiResponse = await fetch(geminiApiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey,
+    },
+    body: JSON.stringify(buildGeminiRequestBody({ imageBase64, mimeType, prompt })),
+  });
+
+  const { data: geminiData, rawText } = await parseJsonResponse(geminiResponse);
+
+  console.info("[Moodboard API] Gemini response", {
+    model,
+    ok: geminiResponse.ok,
+    status: geminiResponse.status,
+  });
+
+  return {
+    geminiResponse,
+    geminiData,
+    rawText,
+    model,
+  };
+}
+
+function getGeminiApiUrl(model) {
+  return `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`;
+}
 
 function setCorsHeaders(request, response) {
   const origin = request.headers.origin;
@@ -215,13 +280,13 @@ async function parseJsonResponse(response) {
   const text = await response.text();
 
   if (!text) {
-    return {};
+    return { data: {}, rawText: "" };
   }
 
   try {
-    return JSON.parse(text);
+    return { data: JSON.parse(text), rawText: text };
   } catch (error) {
-    return { error: { message: text } };
+    return { data: { error: { message: text } }, rawText: text };
   }
 }
 
@@ -303,6 +368,18 @@ function findImageUrl(value) {
   }
 
   return "";
+}
+
+function isModelNotFoundError(data) {
+  const apiMessage = data?.error?.message || data?.message;
+  const normalizedMessage = String(apiMessage || "").toLowerCase();
+
+  return (
+    normalizedMessage.includes("model") &&
+    (normalizedMessage.includes("not found") ||
+      normalizedMessage.includes("not_found") ||
+      normalizedMessage.includes("not supported"))
+  );
 }
 
 function getReadableGeminiError(data, status) {
