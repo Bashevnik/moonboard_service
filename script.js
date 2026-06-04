@@ -1,5 +1,4 @@
-const MOODBOARD_API_URL =
-  window.MOODBOARD_API_URL || "https://YOUR_VERCEL_PROJECT.vercel.app/api/generate-moodboard";
+const MOODBOARD_API_URL = "https://moonboard-service-vercel.vercel.app/api/generate-moodboard";
 
 // API key не хранится во frontend. GitHub Pages отправляет запрос только
 // в serverless proxy, а proxy читает GEMINI_API_KEY из environment variable.
@@ -149,10 +148,18 @@ generatorForm.addEventListener("submit", async (event) => {
   setGeneratingState(true);
 
   try {
+    console.info("[Moodboard] generation start", {
+      fileName: selectedImageFile.name,
+      fileType: selectedImageFile.type,
+      promptLength: promptText.length,
+    });
     const imageUrl = await generateMoodboardWithGemini(selectedImageFile, promptText);
     renderResult(imageUrl);
+    console.info("[Moodboard] generation success", {
+      imageSource: imageUrl.startsWith("data:") ? "base64" : "url",
+    });
   } catch (error) {
-    console.error("[Moodboard] error", error);
+    console.error("[Moodboard] api error", error);
     showError(getReadableApiError(error));
     setResultStatus("Ошибка генерации", false);
   } finally {
@@ -294,11 +301,13 @@ async function generateMoodboardWithGemini(imageFile, promptText) {
   const endpoint = getProxyEndpoint();
   const requestStartedAt = performance.now();
 
-  console.info("[Moodboard] start request", {
+  console.info("[Moodboard] sending request", {
     endpoint,
+    method: "POST",
     fileName: imageFile.name,
     fileType: imageFile.type,
     promptLength: promptText.length,
+    hasImage: Boolean(imageBase64),
   });
 
   const response = await fetch(endpoint, {
@@ -573,7 +582,7 @@ function getProxyEndpoint() {
 
 function isProxyConfigured() {
   const endpoint = getProxyEndpoint();
-  return Boolean(endpoint) && !endpoint.includes("YOUR_VERCEL_PROJECT");
+  return Boolean(endpoint);
 }
 
 function getProxyErrorMessage(status) {
