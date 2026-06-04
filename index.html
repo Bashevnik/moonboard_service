@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Upload a photo, describe the mood, and generate your AI moodboard."
+    />
+    <title>AI Moodboard Generator</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="AI Moodboard Generator home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>AI Moodboard Generator</span>
+      </a>
+      <a class="header-action" href="#generator">Start creating</a>
+    </header>
+
+    <main id="top">
+      <section class="hero-shell" aria-labelledby="pageTitle">
+        <div class="hero-copy">
+          <p class="eyebrow">Creative studio tool</p>
+          <h1 id="pageTitle">AI Moodboard Generator</h1>
+          <p class="hero-lead">
+            Upload a photo, describe the mood, and generate your AI moodboard
+          </p>
+          <div class="hero-details" aria-label="Generator highlights">
+            <span>Reference photo</span>
+            <span>Prompt guided</span>
+            <span>Download ready</span>
+          </div>
+        </div>
+
+        <section class="generator-panel" id="generator" aria-labelledby="generatorTitle">
+          <div class="panel-heading">
+            <p class="eyebrow">Create moodboard</p>
+            <h2 id="generatorTitle">Turn a reference into a visual direction</h2>
+          </div>
+
+          <form class="generator-form" id="generatorForm" novalidate>
+            <div class="field-group">
+              <label for="imageInput">Upload reference photo</label>
+              <div
+                class="drop-zone"
+                id="dropZone"
+                role="button"
+                tabindex="0"
+                aria-controls="imageInput"
+              >
+                <input id="imageInput" type="file" accept="image/*" hidden />
+
+                <div class="drop-content" id="dropContent">
+                  <span class="drop-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false">
+                      <path d="M12 3v12m0-12 4 4m-4-4-4 4" />
+                      <path d="M5 14v4a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-4" />
+                    </svg>
+                  </span>
+                  <strong>Drop image here or browse</strong>
+                  <span>PNG, JPG, WEBP and other image formats</span>
+                </div>
+
+                <div class="preview" id="previewWrap" hidden>
+                  <img id="previewImage" alt="Uploaded reference preview" />
+                  <div class="preview-meta">
+                    <strong id="fileName">Selected image</strong>
+                    <span>Ready to generate</span>
+                  </div>
+                </div>
+              </div>
+              <button class="ghost-button remove-image-button" id="removeImageButton" type="button" hidden>
+                Remove photo
+              </button>
+              <p class="field-hint">
+                Use a clear photo with colors, texture, objects, or lighting you want to keep.
+              </p>
+            </div>
+
+            <div class="field-group">
+              <label for="promptInput">Describe your moodboard</label>
+              <textarea
+                id="promptInput"
+                rows="5"
+                placeholder="Example: calm coastal studio, natural linen, sage accents, warm morning light"
+              ></textarea>
+              <p class="field-hint">
+                Mention style, colors, materials, setting, lighting, and emotional tone.
+              </p>
+            </div>
+
+            <div class="error-message" id="formError" role="alert" hidden></div>
+
+            <button class="primary-button" id="generateButton" type="submit">
+              <span class="button-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M12 3 9.7 8.7 4 11l5.7 2.3L12 19l2.3-5.7L20 11l-5.7-2.3L12 3Z" />
+                  <path d="M19 3v4" />
+                  <path d="M21 5h-4" />
+                </svg>
+              </span>
+              <span class="button-text">Generate Moodboard</span>
+            </button>
+          </form>
+
+          <div class="loader" id="loader" aria-live="polite" hidden>
+            <span class="spinner" aria-hidden="true"></span>
+            <span>Generating your moodboard...</span>
+          </div>
+        </section>
+      </section>
+
+      <section class="result-section" id="resultSection" aria-live="polite" hidden>
+        <div class="result-card">
+          <div class="result-copy">
+            <p class="eyebrow">Result</p>
+            <h2>Your moodboard is ready</h2>
+            <p>
+              Save the generated image to your computer or phone, then create another
+              direction whenever you want.
+            </p>
+
+            <div class="result-actions">
+              <button class="primary-button" id="downloadButton" type="button">
+                <span class="button-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M12 3v12m0 0 4-4m-4 4-4-4" />
+                    <path d="M5 19h14" />
+                  </svg>
+                </span>
+                <span>Download Moodboard</span>
+              </button>
+              <button class="secondary-button" id="generateAgainButton" type="button">
+                <span class="button-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M20 11a8 8 0 0 0-14.3-5" />
+                    <path d="M4 5v6h6" />
+                    <path d="M4 13a8 8 0 0 0 14.3 5" />
+                    <path d="M20 19v-6h-6" />
+                  </svg>
+                </span>
+                <span>Generate Again</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="result-image-wrap">
+            <img id="resultImage" alt="Generated moodboard" />
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>Static GitHub Pages project</span>
+      <span>HTML, CSS, Vanilla JavaScript</span>
+    </footer>
+  </body>
+</html>
