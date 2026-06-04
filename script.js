@@ -6,8 +6,6 @@ const GEMINI_API_KEY = "PASTE_GEMINI_API_KEY_HERE";
 
 const GEMINI_MODEL = "gemini-3.1-flash-image";
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent`;
-const GEMINI_PLACEHOLDER_KEY = "PASTE_GEMINI_API_KEY_HERE";
-const DEMO_MODE_DELAY = 2000;
 
 const generatorForm = document.getElementById("generatorForm");
 const dropZone = document.getElementById("dropZone");
@@ -24,8 +22,16 @@ const generateButtonText = generateButton.querySelector(".button-text");
 const loader = document.getElementById("loader");
 const resultSection = document.getElementById("resultSection");
 const resultImage = document.getElementById("resultImage");
+const emptyState = document.getElementById("emptyState");
+const resultStatus = document.getElementById("resultStatus");
+const resultMeta = document.getElementById("resultMeta");
 const downloadButton = document.getElementById("downloadButton");
 const generateAgainButton = document.getElementById("generateAgainButton");
+const zoomButton = document.getElementById("zoomButton");
+const openPreviewButton = document.getElementById("openPreviewButton");
+const imageModal = document.getElementById("imageModal");
+const modalImage = document.getElementById("modalImage");
+const closeModalButton = document.getElementById("closeModalButton");
 
 let selectedImageFile = null;
 let previewObjectUrl = "";
@@ -33,11 +39,9 @@ let currentMoodboardUrl = "";
 let isGenerating = false;
 
 dropZone.addEventListener("click", (event) => {
-  if (event.target.closest("button")) {
-    return;
+  if (!event.target.closest("button")) {
+    imageInput.click();
   }
-
-  imageInput.click();
 });
 
 dropZone.addEventListener("keydown", (event) => {
@@ -103,8 +107,9 @@ generatorForm.addEventListener("submit", async (event) => {
     const imageUrl = await generateMoodboardWithGemini(selectedImageFile, promptText);
     renderResult(imageUrl);
   } catch (error) {
-    console.error(error);
+    console.error("[Moodboard] error", error);
     showError(getReadableApiError(error));
+    setResultStatus("Ошибка генерации", false);
   } finally {
     setGeneratingState(false);
   }
@@ -115,24 +120,35 @@ downloadButton.addEventListener("click", () => {
 });
 
 generateAgainButton.addEventListener("click", () => {
-  hideResult();
   clearError();
-  document.getElementById("generator").scrollIntoView({ behavior: "smooth", block: "center" });
   promptInput.focus();
+  document.getElementById("generator").scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
+zoomButton.addEventListener("click", openImageModal);
+openPreviewButton.addEventListener("click", openImageModal);
+closeModalButton.addEventListener("click", closeImageModal);
+
+imageModal.addEventListener("click", (event) => {
+  if (event.target === imageModal) {
+    closeImageModal();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !imageModal.hidden) {
+    closeImageModal();
+  }
 });
 
 function handleImageFile(file) {
-  if (isGenerating) {
-    return;
-  }
-
-  if (!file) {
+  if (isGenerating || !file) {
     return;
   }
 
   if (!file.type.startsWith("image/")) {
     clearSelectedImage();
-    showError("Можно загрузить только файл изображения.");
+    showError("Можно загрузить только изображение.");
     return;
   }
 
@@ -155,7 +171,7 @@ function clearSelectedImage() {
   selectedImageFile = null;
   imageInput.value = "";
   previewImage.removeAttribute("src");
-  fileName.textContent = "Референс выбран";
+  fileName.textContent = "Файл выбран";
   previewWrap.hidden = true;
   dropContent.hidden = false;
   removeImageButton.hidden = true;
@@ -172,7 +188,11 @@ function getValidationError(promptText) {
   }
 
   if (!promptText) {
-    return "Опишите настроение мудборда.";
+    return "Опишите настроение и задачу для мудборда.";
+  }
+
+  if (!GEMINI_API_KEY.trim()) {
+    return "Добавьте GEMINI_API_KEY в script.js.";
   }
 
   return "";
@@ -196,7 +216,11 @@ function setGeneratingState(isLoading) {
   promptInput.disabled = isLoading;
   removeImageButton.disabled = isLoading;
   generatorForm.setAttribute("aria-busy", String(isLoading));
-  generateButtonText.textContent = isLoading ? "Создаём..." : "Создать мудборд";
+  generateButtonText.textContent = isLoading ? "Генерация..." : "Создать мудборд";
+
+  if (isLoading) {
+    setResultStatus("Запрос к Gemini", false);
+  }
 }
 
 function fileToBase64(file) {
@@ -215,45 +239,36 @@ function fileToBase64(file) {
 }
 
 async function generateMoodboardWithGemini(imageFile, promptText) {
-  if (!hasGeminiApiKey()) {
-    await wait(DEMO_MODE_DELAY);
-    return createDemoMoodboard(promptText);
-  }
-
+  const requestStartedAt = performance.now();
   const base64Image = await fileToBase64(imageFile);
+  const requestBody = buildGeminiRequestBody(imageFile, base64Image, promptText);
+
+  console.info("[Moodboard] start request", {
+    endpoint: GEMINI_API_URL,
+    model: GEMINI_MODEL,
+    fileName: imageFile.name,
+    fileType: imageFile.type,
+    promptLength: promptText.length,
+    usingPlaceholderKey: GEMINI_API_KEY === "PASTE_GEMINI_API_KEY_HERE",
+  });
+
   const response = await fetch(GEMINI_API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "x-goog-api-key": GEMINI_API_KEY.trim(),
     },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { text: buildGeminiPrompt(promptText) },
-            {
-              inlineData: {
-                mimeType: imageFile.type || "image/png",
-                data: base64Image,
-              },
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        responseModalities: ["Image"],
-        responseFormat: {
-          image: {
-            aspectRatio: "1:1",
-          },
-        },
-      },
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   const data = await parseJsonResponse(response);
+
+  console.info("[Moodboard] api response", {
+    ok: response.ok,
+    status: response.status,
+    elapsedMs: Math.round(performance.now() - requestStartedAt),
+    data,
+  });
 
   if (!response.ok) {
     throw new Error(getGeminiErrorMessage(data, response.status));
@@ -263,77 +278,30 @@ async function generateMoodboardWithGemini(imageFile, promptText) {
 
   if (!imageUrl) {
     throw new Error(
-      "Gemini не вернул изображение. Попробуйте изменить описание или проверьте настройки модели."
+      "Gemini ответил без изображения. Попробуйте уточнить описание или проверьте доступность image generation для ключа."
     );
   }
 
   return imageUrl;
 }
 
-function renderResult(imageUrl) {
-  currentMoodboardUrl = imageUrl;
-  resultImage.src = imageUrl;
-  resultSection.hidden = false;
-  resultSection.classList.remove("is-visible");
-  void resultSection.offsetWidth;
-  resultSection.classList.add("is-visible");
-  resultSection.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function hideResult() {
-  currentMoodboardUrl = "";
-  resultImage.removeAttribute("src");
-  resultSection.hidden = true;
-  resultSection.classList.remove("is-visible");
-}
-
-async function downloadGeneratedImage() {
-  if (!currentMoodboardUrl) {
-    showError("Сначала создайте мудборд.");
-    return;
-  }
-
-  const downloadName = `moodboard-${new Date().toISOString().slice(0, 10)}.png`;
-
-  if (currentMoodboardUrl.startsWith("data:") || currentMoodboardUrl.startsWith("blob:")) {
-    triggerDownload(currentMoodboardUrl, downloadName);
-    return;
-  }
-
-  try {
-    const response = await fetch(currentMoodboardUrl, { mode: "cors" });
-
-    if (!response.ok) {
-      throw new Error("Не удалось скачать изображение по ссылке.");
-    }
-
-    const blob = await response.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    triggerDownload(objectUrl, downloadName);
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-  } catch (error) {
-    console.warn(error);
-    const link = window.open(currentMoodboardUrl, "_blank", "noopener,noreferrer");
-
-    if (!link) {
-      showError("Браузер заблокировал скачивание. Откройте результат в новой вкладке.");
-    }
-  }
-}
-
-function triggerDownload(url, fileName) {
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  link.rel = "noopener";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-}
-
-function hasGeminiApiKey() {
-  const key = GEMINI_API_KEY.trim();
-  return Boolean(key) && key !== GEMINI_PLACEHOLDER_KEY;
+function buildGeminiRequestBody(imageFile, base64Image, promptText) {
+  return {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: buildGeminiPrompt(promptText) },
+          {
+            inlineData: {
+              mimeType: imageFile.type || "image/png",
+              data: base64Image,
+            },
+          },
+        ],
+      },
+    ],
+  };
 }
 
 function buildGeminiPrompt(promptText) {
@@ -374,8 +342,9 @@ function extractImageFromGeminiResponse(data) {
       return `data:${mimeType};base64,${inlineData.data}`;
     }
 
-    if (part.fileData?.fileUri || part.file_data?.file_uri) {
-      return part.fileData?.fileUri || part.file_data?.file_uri;
+    const fileUri = part.fileData?.fileUri || part.file_data?.file_uri;
+    if (fileUri) {
+      return fileUri;
     }
   }
 
@@ -427,170 +396,122 @@ function findImageUrl(value) {
   return "";
 }
 
+function renderResult(imageUrl) {
+  currentMoodboardUrl = imageUrl;
+  resultImage.src = imageUrl;
+  modalImage.src = imageUrl;
+  emptyState.hidden = true;
+  resultSection.hidden = false;
+  resultMeta.textContent = `Сгенерировано ${new Date().toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+  setResultStatus("Готово", true);
+  resultSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function hideResult() {
+  currentMoodboardUrl = "";
+  resultImage.removeAttribute("src");
+  modalImage.removeAttribute("src");
+  resultSection.hidden = true;
+  emptyState.hidden = false;
+  setResultStatus("Ожидает данных", false);
+}
+
+async function downloadGeneratedImage() {
+  if (!currentMoodboardUrl) {
+    showError("Сначала создайте мудборд.");
+    return;
+  }
+
+  const downloadName = `moodboard-${new Date().toISOString().slice(0, 10)}.png`;
+
+  if (currentMoodboardUrl.startsWith("data:") || currentMoodboardUrl.startsWith("blob:")) {
+    triggerDownload(currentMoodboardUrl, downloadName);
+    return;
+  }
+
+  try {
+    const response = await fetch(currentMoodboardUrl, { mode: "cors" });
+
+    if (!response.ok) {
+      throw new Error("Не удалось скачать изображение по ссылке.");
+    }
+
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    triggerDownload(objectUrl, downloadName);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  } catch (error) {
+    console.error("[Moodboard] error", error);
+    const opened = window.open(currentMoodboardUrl, "_blank", "noopener,noreferrer");
+
+    if (!opened) {
+      showError("Браузер заблокировал скачивание. Откройте результат в новой вкладке.");
+    }
+  }
+}
+
+function triggerDownload(url, downloadName) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = downloadName;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function openImageModal() {
+  if (!currentMoodboardUrl) {
+    return;
+  }
+
+  modalImage.src = currentMoodboardUrl;
+  imageModal.hidden = false;
+  document.body.classList.add("modal-open");
+  closeModalButton.focus();
+}
+
+function closeImageModal() {
+  imageModal.hidden = true;
+  document.body.classList.remove("modal-open");
+  zoomButton.focus();
+}
+
+function setResultStatus(text, isReady) {
+  resultStatus.textContent = text;
+  resultStatus.classList.toggle("is-ready", isReady);
+}
+
 function getGeminiErrorMessage(data, status) {
   const apiMessage = data?.error?.message || data?.message;
+  const normalizedMessage = String(apiMessage || "").toLowerCase();
+
+  if (normalizedMessage.includes("api key not valid") || normalizedMessage.includes("api_key_invalid")) {
+    return "API-ключ Gemini недействителен. Замените GEMINI_API_KEY в script.js на реальный ключ.";
+  }
+
+  if (normalizedMessage.includes("api key")) {
+    return "Проблема с API-ключом Gemini. Проверьте GEMINI_API_KEY в script.js.";
+  }
 
   if (status === 400) {
-    return apiMessage || "Gemini отклонил запрос. Проверьте формат изображения и описание.";
+    return "Gemini отклонил запрос. Проверьте формат изображения и описание.";
   }
 
   if (status === 401 || status === 403) {
-    return apiMessage || "Gemini не принял API-ключ. Проверьте значение GEMINI_API_KEY.";
+    return "Gemini не принял API-ключ. Проверьте GEMINI_API_KEY в script.js.";
   }
 
   if (status === 429) {
-    return apiMessage || "Слишком много запросов к Gemini. Подождите немного и попробуйте снова.";
+    return "Слишком много запросов к Gemini. Подождите немного и попробуйте снова.";
   }
 
-  return apiMessage || `Gemini вернул ошибку ${status}. Попробуйте ещё раз.`;
+  return `Gemini вернул ошибку ${status}. Попробуйте ещё раз.`;
 }
 
 function getReadableApiError(error) {
-  return error?.message || "Не удалось создать мудборд. Попробуйте ещё раз.";
-}
-
-function wait(milliseconds) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
-function createDemoMoodboard(promptText) {
-  const canvas = document.createElement("canvas");
-  const size = 1400;
-  const ctx = canvas.getContext("2d");
-  const palette = getPalette(promptText);
-
-  canvas.width = size;
-  canvas.height = size;
-
-  drawDemoBackground(ctx, size, palette);
-  drawDemoSections(ctx, palette);
-  drawDemoTextures(ctx, palette);
-  drawDemoPalette(ctx, palette);
-
-  return canvas.toDataURL("image/png");
-}
-
-function getPalette(promptText) {
-  const palettes = [
-    ["#6a724c", "#dfc8a5", "#b06a48", "#f6ead8", "#8b765c"],
-    ["#3a2d22", "#e4d3bb", "#c08a5a", "#fbf1e3", "#77815e"],
-    ["#534331", "#b96f4e", "#d1aa66", "#f1e3cd", "#7f825f"],
-    ["#596344", "#aeb28a", "#bd7753", "#f7ead7", "#7c6048"],
-  ];
-
-  let hash = 0;
-  for (let index = 0; index < promptText.length; index += 1) {
-    hash = (hash + promptText.charCodeAt(index) * (index + 1)) % palettes.length;
-  }
-
-  return palettes[hash];
-}
-
-function drawDemoBackground(ctx, size, palette) {
-  const gradient = ctx.createLinearGradient(0, 0, size, size);
-  gradient.addColorStop(0, "#fbf1e3");
-  gradient.addColorStop(0.48, palette[3]);
-  gradient.addColorStop(1, "#e5d2b8");
-
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, size, size);
-
-  ctx.fillStyle = "rgba(255, 248, 236, 0.62)";
-  roundedRect(ctx, 70, 70, size - 140, size - 140, 44);
-  ctx.fill();
-}
-
-function drawDemoSections(ctx, palette) {
-  const sections = [
-    [120, 132, 520, 530, palette[1]],
-    [688, 132, 592, 280, palette[4]],
-    [688, 452, 250, 402, palette[2]],
-    [978, 452, 302, 402, palette[0]],
-    [120, 710, 520, 450, "#f8ead6"],
-    [688, 900, 592, 260, "#d7bf94"],
-  ];
-
-  sections.forEach(([x, y, width, height, color], index) => {
-    ctx.save();
-    ctx.shadowColor = "rgba(72, 50, 32, 0.14)";
-    ctx.shadowBlur = 28;
-    ctx.shadowOffsetY = 16;
-    ctx.fillStyle = color;
-    roundedRect(ctx, x, y, width, height, 34);
-    ctx.fill();
-    ctx.restore();
-
-    if (index % 2 === 0) {
-      addSoftOverlay(ctx, x, y, width, height);
-    }
-  });
-}
-
-function drawDemoTextures(ctx, palette) {
-  ctx.strokeStyle = "rgba(89, 62, 42, 0.14)";
-  ctx.lineWidth = 3;
-
-  for (let x = 150; x < 620; x += 28) {
-    ctx.beginPath();
-    ctx.moveTo(x, 730);
-    ctx.lineTo(x + 42, 1140);
-    ctx.stroke();
-  }
-
-  ctx.strokeStyle = "rgba(255, 248, 236, 0.38)";
-  ctx.lineWidth = 8;
-
-  for (let y = 180; y < 392; y += 46) {
-    ctx.beginPath();
-    ctx.moveTo(724, y);
-    ctx.bezierCurveTo(832, y - 30, 948, y + 24, 1070, y - 14);
-    ctx.stroke();
-  }
-
-  ctx.fillStyle = "rgba(255, 248, 236, 0.58)";
-  ctx.beginPath();
-  ctx.arc(830, 652, 92, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.strokeStyle = palette[3];
-  ctx.lineWidth = 12;
-  ctx.beginPath();
-  ctx.moveTo(1010, 648);
-  ctx.bezierCurveTo(1110, 546, 1238, 626, 1240, 760);
-  ctx.stroke();
-}
-
-function drawDemoPalette(ctx, palette) {
-  palette.forEach((color, index) => {
-    const x = 720 + index * 104;
-    ctx.fillStyle = color;
-    roundedRect(ctx, x, 950, 78, 150, 28);
-    ctx.fill();
-  });
-}
-
-function addSoftOverlay(ctx, x, y, width, height) {
-  const gradient = ctx.createLinearGradient(x, y, x + width, y + height);
-  gradient.addColorStop(0, "rgba(255, 255, 255, 0.22)");
-  gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
-  ctx.fillStyle = gradient;
-  roundedRect(ctx, x, y, width, height, 34);
-  ctx.fill();
-}
-
-function roundedRect(ctx, x, y, width, height, radius) {
-  const safeRadius = Math.min(radius, width / 2, height / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + safeRadius, y);
-  ctx.lineTo(x + width - safeRadius, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
-  ctx.lineTo(x + width, y + height - safeRadius);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
-  ctx.lineTo(x + safeRadius, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
-  ctx.lineTo(x, y + safeRadius);
-  ctx.quadraticCurveTo(x, y, x + safeRadius, y);
-  ctx.closePath();
+  return error?.message || "Не удалось создать мудборд. Проверьте API и попробуйте ещё раз.";
 }

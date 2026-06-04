@@ -1,25 +1,25 @@
 # Генератор мудбордов
 
 Статический одностраничный сайт для GitHub Pages. Пользователь загружает
-референс, описывает настроение, сайт отправляет фото и текст в Google Gemini API,
-показывает сгенерированный мудборд и позволяет скачать результат.
+референс, описывает визуальное направление, сайт отправляет фото и текст в
+Google Gemini API и показывает сгенерированный мудборд.
 
 ## Файлы
 
-- `index.html` - разметка страницы
-- `style.css` - адаптивный визуальный дизайн
-- `script.js` - загрузка файла, валидация, Gemini API, fallback и скачивание
+- `index.html` - структура приложения
+- `style.css` - чистый product UI без декоративных заглушек
+- `script.js` - загрузка файла, валидация, Gemini API, результат и скачивание
 - `README.md` - описание проекта
 
 ## Локальный запуск
 
-Можно открыть `index.html` напрямую в браузере:
+Можно открыть файл напрямую:
 
 ```powershell
 Start-Process .\index.html
 ```
 
-Если установлен Python, можно запустить небольшой статический сервер:
+Или запустить статический сервер, если установлен Python:
 
 ```bash
 python -m http.server 8000
@@ -31,58 +31,69 @@ python -m http.server 8000
 http://localhost:8000/
 ```
 
-## Настройка Gemini API
+## Gemini API
 
-В `script.js` замените значение в начале файла:
+В `script.js` замените:
 
 ```js
 const GEMINI_API_KEY = "PASTE_GEMINI_API_KEY_HERE";
 ```
 
-Сайт использует нативную генерацию/редактирование изображений Gemini:
+на реальный ключ из Google AI Studio.
+
+Сайт отправляет запрос напрямую в Gemini:
 
 ```text
-model: gemini-3.1-flash-image
-endpoint: https://generativelanguage.googleapis.com/v1/models/gemini-3.1-flash-image:generateContent
+https://generativelanguage.googleapis.com/v1/models/gemini-3.1-flash-image:generateContent
 ```
 
-В запрос отправляются:
+В запросе используются:
 
+- `inlineData` для загруженного изображения
 - текстовый prompt
-- загруженное изображение как `inlineData`
-- `responseModalities: ["Image"]`
-- `responseFormat.image.aspectRatio: "1:1"`
 
-Gemini обычно возвращает изображение как base64 в:
+Квадратный формат задаётся в prompt: `Generate one square moodboard image...`.
+Optional-поля `generationConfig.responseModalities/responseFormat` не добавлены в
+тело запроса, потому что в браузерном REST-вызове они могут возвращать ошибку
+валидации на стороне API. Gemini image model по умолчанию умеет возвращать
+`inlineData` с изображением.
+
+Ответ Gemini читается из:
 
 ```text
 candidates[0].content.parts[].inlineData.data
 ```
 
-Сайт также умеет обработать ответ с `image_url`, если API или прокси вернёт
-ссылку на изображение.
+Если ответ содержит `image_url`, сайт также умеет показать и скачать изображение
+по этой ссылке.
 
-Важно: хранить API-ключ во frontend JavaScript можно только для временного
-дипломного демо. В реальном проекте запросы нужно переносить на backend или
-serverless-прокси, чтобы ключ не был виден посетителям.
+## Важно про GitHub Pages и API-ключ
 
-## Fallback
+GitHub Pages не умеет выполнять backend-код. Поэтому текущая дипломная версия
+делает запрос к Gemini напрямую из браузера, а ключ лежит в `script.js`.
 
-Если `GEMINI_API_KEY` пустой или равен `PASTE_GEMINI_API_KEY_HERE`, сайт не
-отправляет запрос в Gemini. Через 2 секунды он показывает демо-мудборд,
-созданный в браузере. В этом режиме исходное фото не вставляется в готовый
-шаблон, это только визуальный fallback для защиты проекта без ключа.
+Это работает для демонстрации, но ключ будет виден любому посетителю сайта. Для
+реального продукта нужно вынести запрос в serverless-функцию на Vercel, Netlify
+или Cloudflare Workers и хранить ключ в переменных окружения.
 
-## Публикация на GitHub Pages
+## Проверка работы
 
-1. Загрузите проект в GitHub.
-2. Откройте настройки репозитория.
-3. Перейдите в `Settings -> Pages`.
-4. Выберите `Deploy from a branch`.
-5. Выберите ветку `main` и папку `/root`.
-6. Сохраните настройки.
+Откройте DevTools -> Network -> Fetch/XHR, загрузите изображение, заполните
+описание и нажмите `Создать мудборд`. Должен появиться запрос к:
 
-Для этого репозитория ссылка GitHub Pages будет:
+```text
+generativelanguage.googleapis.com
+```
+
+В Console дополнительно выводятся:
+
+- `[Moodboard] start request`
+- `[Moodboard] api response`
+- `[Moodboard] error`
+
+## GitHub Pages
+
+Для этого репозитория ссылка GitHub Pages:
 
 ```text
 https://bashevnik.github.io/moonboard_service/

@@ -5,55 +5,51 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Загрузите фото, опишите настроение, и сервис соберёт визуальный мудборд."
+      content="Сервис для генерации мудбордов по референсу и текстовому описанию через Google Gemini."
     />
     <title>Генератор мудбордов</title>
     <link rel="stylesheet" href="style.css" />
     <script src="script.js" defer></script>
   </head>
   <body>
-    <header class="site-header">
-      <a class="brand" href="#top" aria-label="Главная страница генератора мудбордов">
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="Генератор мудбордов">
         <span class="brand-mark" aria-hidden="true"></span>
         <span>Генератор мудбордов</span>
       </a>
-      <a class="header-action" href="#generator">Начать</a>
+
+      <div class="topbar-meta" aria-label="Информация о сервисе">
+        <span>Gemini Image API</span>
+        <a href="#generator">Создать</a>
+      </div>
     </header>
 
-    <main id="top">
-      <section class="hero-shell" aria-labelledby="pageTitle">
-        <div class="hero-copy">
-          <p class="eyebrow">Инструмент для визуальных идей</p>
-          <h1 id="pageTitle">Генератор мудбордов</h1>
-          <p class="hero-lead">
-            Загрузите фото, опишите настроение, и сервис соберёт визуальный мудборд
-          </p>
-          <p class="hero-note">
-            Подходит для бренда, интерьера, фотосессии, сайта или презентации.
-          </p>
-          <div class="hero-details" aria-label="Где можно использовать мудборд">
-            <span>Бренд</span>
-            <span>Интерьер</span>
-            <span>Фотосессия</span>
-            <span>Презентация</span>
-          </div>
-
-          <div class="atelier-strip" aria-hidden="true">
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
+    <main class="product-shell" id="top">
+      <section class="product-intro" aria-labelledby="pageTitle">
+        <div>
+          <p class="eyebrow">Рабочее пространство для визуальных направлений</p>
+          <h1 id="pageTitle">Соберите мудборд из референса за один запрос</h1>
         </div>
+        <p>
+          Загрузите изображение, опишите настроение и получите квадратный мудборд
+          для бренда, интерьера, фотосессии, сайта или презентации.
+        </p>
+      </section>
 
-        <section class="generator-panel" id="generator" aria-labelledby="generatorTitle">
+      <section class="workspace" id="generator" aria-label="Генератор мудборда">
+        <aside class="control-panel">
           <div class="panel-heading">
-            <p class="eyebrow">Мастерская мудборда</p>
-            <h2 id="generatorTitle">Превратите референс в визуальное направление</h2>
+            <span class="step-label">Новый мудборд</span>
+            <h2>Исходные данные</h2>
           </div>
 
           <form class="generator-form" id="generatorForm" novalidate>
             <div class="field-group">
-              <label for="imageInput">Загрузите референс</label>
+              <div class="label-row">
+                <label for="imageInput">Референс</label>
+                <span>Обязательное поле</span>
+              </div>
+
               <div
                 class="drop-zone"
                 id="dropZone"
@@ -66,39 +62,42 @@
                 <div class="drop-content" id="dropContent">
                   <span class="drop-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" focusable="false">
-                      <path d="M12 3v12m0-12 4 4m-4-4-4 4" />
-                      <path d="M5 14v4a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-4" />
+                      <path d="M12 4v10m0-10 4 4m-4-4-4 4" />
+                      <path d="M5 15v3a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-3" />
                     </svg>
                   </span>
-                  <strong>Перетащите изображение сюда или выберите файл</strong>
-                  <span>PNG, JPG, WEBP и другие форматы</span>
+                  <strong>Перетащите изображение или выберите файл</strong>
+                  <span>PNG, JPG, WEBP</span>
                 </div>
 
                 <div class="preview" id="previewWrap" hidden>
                   <img id="previewImage" alt="Превью загруженного референса" />
                   <div class="preview-meta">
-                    <strong id="fileName">Референс выбран</strong>
-                    <span>Можно создавать мудборд</span>
+                    <strong id="fileName">Файл выбран</strong>
+                    <span>Изображение готово к отправке</span>
                   </div>
                 </div>
               </div>
-              <button class="ghost-button remove-image-button" id="removeImageButton" type="button" hidden>
-                Убрать фото
-              </button>
-              <p class="field-hint">
-                Лучше всего работают фотографии с понятными цветами, фактурами и светом.
-              </p>
+
+              <div class="field-actions">
+                <button class="text-button" id="removeImageButton" type="button" hidden>
+                  Убрать файл
+                </button>
+              </div>
             </div>
 
             <div class="field-group">
-              <label for="promptInput">Опишите мудборд</label>
+              <div class="label-row">
+                <label for="promptInput">Описание</label>
+                <span>Что нужно собрать</span>
+              </div>
               <textarea
                 id="promptInput"
-                rows="5"
-                placeholder="Например: спокойная студия у моря, натуральный лён, оливковые акценты, мягкий утренний свет"
+                rows="6"
+                placeholder="Например: минималистичный бренд для кофейни, тёплый свет, натуральное дерево, спокойная типографика, оливковые и молочные оттенки"
               ></textarea>
               <p class="field-hint">
-                Добавьте стиль, цвета, материалы, настроение, свет и детали сцены.
+                Укажите стиль, цвет, материалы, свет, настроение и назначение мудборда.
               </p>
             </div>
 
@@ -108,65 +107,101 @@
               <span class="button-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" focusable="false">
                   <path d="M12 3 9.7 8.7 4 11l5.7 2.3L12 19l2.3-5.7L20 11l-5.7-2.3L12 3Z" />
-                  <path d="M19 3v4" />
-                  <path d="M21 5h-4" />
                 </svg>
               </span>
               <span class="button-text">Создать мудборд</span>
             </button>
+
+            <div class="loader" id="loader" aria-live="polite" hidden>
+              <span class="spinner" aria-hidden="true"></span>
+              <span>Отправляем запрос в Gemini...</span>
+            </div>
           </form>
 
-          <div class="loader" id="loader" aria-live="polite" hidden>
-            <span class="spinner" aria-hidden="true"></span>
-            <span>Собираем мудборд...</span>
+          <p class="security-note">
+            На GitHub Pages запрос идёт напрямую из браузера. Это работает для
+            дипломного демо, но API-ключ будет виден в коде. Для продакшена нужен
+            serverless-прокси.
+          </p>
+        </aside>
+
+        <section class="result-panel" aria-labelledby="resultTitle">
+          <div class="result-header">
+            <div>
+              <span class="step-label">Результат</span>
+              <h2 id="resultTitle">Просмотр мудборда</h2>
+            </div>
+            <span class="status-pill" id="resultStatus">Ожидает данных</span>
+          </div>
+
+          <div class="empty-state" id="emptyState">
+            <div class="empty-preview" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <h3>Здесь появится сгенерированное изображение</h3>
+            <p>
+              После успешного ответа Gemini вы сможете увеличить мудборд и скачать
+              его на устройство.
+            </p>
+          </div>
+
+          <div class="result-view" id="resultSection" hidden>
+            <button class="image-frame" id="zoomButton" type="button" aria-label="Увеличить мудборд">
+              <img id="resultImage" alt="Сгенерированный мудборд" />
+            </button>
+
+            <div class="result-toolbar">
+              <div>
+                <strong>Мудборд готов</strong>
+                <span id="resultMeta">Сгенерировано через Gemini</span>
+              </div>
+
+              <div class="toolbar-actions">
+                <button class="secondary-button" id="openPreviewButton" type="button">
+                  <span class="button-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false">
+                      <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                      <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+                      <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+                      <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                    </svg>
+                  </span>
+                  Увеличить
+                </button>
+                <button class="secondary-button" id="generateAgainButton" type="button">
+                  Снова
+                </button>
+                <button class="primary-button compact" id="downloadButton" type="button">
+                  Скачать
+                </button>
+              </div>
+            </div>
           </div>
         </section>
       </section>
-
-      <section class="result-section" id="resultSection" aria-live="polite" hidden>
-        <div class="result-card">
-          <div class="result-copy">
-            <p class="eyebrow">Готово</p>
-            <h2>Мудборд готов</h2>
-            <p>
-              Скачайте изображение на компьютер или телефон, а затем соберите ещё
-              одно направление с другим настроением.
-            </p>
-
-            <div class="result-actions">
-              <button class="primary-button" id="downloadButton" type="button">
-                <span class="button-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" focusable="false">
-                    <path d="M12 3v12m0 0 4-4m-4 4-4-4" />
-                    <path d="M5 19h14" />
-                  </svg>
-                </span>
-                <span>Скачать мудборд</span>
-              </button>
-              <button class="secondary-button" id="generateAgainButton" type="button">
-                <span class="button-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" focusable="false">
-                    <path d="M20 11a8 8 0 0 0-14.3-5" />
-                    <path d="M4 5v6h6" />
-                    <path d="M4 13a8 8 0 0 0 14.3 5" />
-                    <path d="M20 19v-6h-6" />
-                  </svg>
-                </span>
-                <span>Создать заново</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="result-image-wrap">
-            <img id="resultImage" alt="Сгенерированный мудборд" />
-          </div>
-        </div>
-      </section>
     </main>
 
+    <div class="image-modal" id="imageModal" role="dialog" aria-modal="true" aria-label="Просмотр мудборда" hidden>
+      <div class="modal-card">
+        <div class="modal-header">
+          <strong>Мудборд</strong>
+          <button class="icon-button" id="closeModalButton" type="button" aria-label="Закрыть просмотр">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </div>
+        <img id="modalImage" alt="Увеличенный мудборд" />
+      </div>
+    </div>
+
     <footer class="site-footer">
-      <span>Статический проект для GitHub Pages</span>
-      <span>HTML, CSS, Vanilla JavaScript</span>
+      <span>Статический frontend для GitHub Pages</span>
+      <span>HTML · CSS · Vanilla JavaScript</span>
     </footer>
   </body>
 </html>
