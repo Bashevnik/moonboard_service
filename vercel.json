@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/generate-moodboard.js": {
+      "maxDuration": 60
+    }
+  }
+}

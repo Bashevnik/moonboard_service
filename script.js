@@ -1,11 +1,8 @@
-const GEMINI_API_KEY = "PASTE_GEMINI_API_KEY_HERE";
+const MOODBOARD_API_URL =
+  window.MOODBOARD_API_URL || "https://YOUR_VERCEL_PROJECT.vercel.app/api/generate-moodboard";
 
-// Для дипломного демо ключ временно хранится во frontend JS.
-// В реальном продукте так делать нельзя: API-ключ должен жить на backend
-// или в serverless-прокси, иначе посетители сайта увидят его в исходном коде.
-
-const GEMINI_MODEL = "gemini-3.1-flash-image";
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent`;
+// API key не хранится во frontend. GitHub Pages отправляет запрос только
+// в serverless proxy, а proxy читает GEMINI_API_KEY из environment variable.
 
 const generatorForm = document.getElementById("generatorForm");
 const dropZone = document.getElementById("dropZone");
@@ -239,8 +236,8 @@ function getValidationError(promptText) {
     return "Опишите настроение, стиль и задачу для мудборда.";
   }
 
-  if (!GEMINI_API_KEY.trim() || GEMINI_API_KEY === "PASTE_GEMINI_API_KEY_HERE") {
-    return "Добавьте реальный GEMINI_API_KEY в начало файла script.js.";
+  if (!isProxyConfigured()) {
+    return "Укажите URL serverless proxy в MOODBOARD_API_URL. Для GitHub Pages нужен полный URL Vercel Function.";
   }
 
   return "";
@@ -267,7 +264,7 @@ function setGeneratingState(isLoading) {
   generateButtonText.textContent = isLoading ? "Создаём мудборд..." : "Создать мудборд";
 
   if (isLoading) {
-    setResultStatus("Запрос к Gemini", false);
+    setResultStatus("Запрос к proxy", false);
   }
 }
 
@@ -287,45 +284,27 @@ function fileToBase64(file) {
 }
 
 async function generateMoodboardWithGemini(imageFile, promptText) {
-  const base64Image = await fileToBase64(imageFile);
-  const requestBody = buildGeminiRequestBody(imageFile, base64Image, promptText);
-  const result = await sendGeminiRequest(requestBody, imageFile, promptText);
-
-  if (!result.response.ok) {
-    throw new Error(getGeminiErrorMessage(result.data, result.response.status));
-  }
-
-  const imageUrl = extractImageFromGeminiResponse(result.data);
-
-  if (!imageUrl) {
-    const textResponse = extractTextFromGeminiResponse(result.data);
-    const detail = textResponse ? ` Ответ Gemini: ${textResponse}` : "";
-
-    throw new Error(
-      `Gemini ответил без изображения. Проверьте, что для ключа доступна генерация изображений.${detail}`
-    );
-  }
-
-  return imageUrl;
-}
-
-async function sendGeminiRequest(requestBody, imageFile, promptText) {
+  const imageBase64 = await fileToBase64(imageFile);
+  const requestBody = {
+    imageBase64,
+    mimeType: imageFile.type || "image/png",
+    prompt: promptText,
+    fileName: imageFile.name,
+  };
+  const endpoint = getProxyEndpoint();
   const requestStartedAt = performance.now();
 
   console.info("[Moodboard] start request", {
-    endpoint: GEMINI_API_URL,
-    model: GEMINI_MODEL,
+    endpoint,
     fileName: imageFile.name,
     fileType: imageFile.type,
     promptLength: promptText.length,
-    keyConfigured: Boolean(GEMINI_API_KEY.trim()),
   });
 
-  const response = await fetch(GEMINI_API_URL, {
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-goog-api-key": GEMINI_API_KEY.trim(),
     },
     body: JSON.stringify(requestBody),
   });
@@ -339,35 +318,17 @@ async function sendGeminiRequest(requestBody, imageFile, promptText) {
     data,
   });
 
-  return { response, data };
-}
+  if (!response.ok) {
+    throw new Error(data?.error || getProxyErrorMessage(response.status));
+  }
 
-function buildGeminiRequestBody(imageFile, base64Image, promptText) {
-  return {
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { text: buildGeminiPrompt(promptText) },
-          {
-            inlineData: {
-              mimeType: imageFile.type || "image/png",
-              data: base64Image,
-            },
-          },
-        ],
-      },
-    ],
-  };
-}
+  const imageUrl = extractProxyImage(data);
 
-function buildGeminiPrompt(promptText) {
-  return `Create a beautiful visual moodboard based on the uploaded reference image and this description: ${promptText}.
-Use the reference image only as inspiration for colors, textures, mood, lighting and visual direction.
-Generate one square 1:1 creative direction moodboard image.
-The result should look like a polished Behance moodboard, Pinterest editorial board, fashion campaign board, or premium creative direction board.
-Include a strong main visual, supporting reference panels, color palette, material textures, lighting references, typography mood samples as abstract shapes only, and a cohesive editorial composition.
-No readable text, no watermark, no logos.`;
+  if (!imageUrl) {
+    throw new Error("Proxy вернул ответ без изображения. Проверьте доступ к Gemini image generation.");
+  }
+
+  return imageUrl;
 }
 
 async function parseJsonResponse(response) {
@@ -380,85 +341,21 @@ async function parseJsonResponse(response) {
   try {
     return JSON.parse(text);
   } catch (error) {
-    throw new Error("Gemini вернул ответ в неожиданном формате.");
+    throw new Error("Proxy вернул ответ в неожиданном формате.");
   }
 }
 
-function extractImageFromGeminiResponse(data) {
-  const directUrl = findImageUrl(data);
-
-  if (directUrl) {
-    return directUrl;
+function extractProxyImage(data) {
+  if (typeof data?.imageUrl === "string") {
+    return data.imageUrl;
   }
 
-  const parts = data?.candidates?.flatMap((candidate) => candidate?.content?.parts || []) || [];
-
-  for (const part of parts) {
-    const inlineData = part.inlineData || part.inline_data;
-
-    if (inlineData?.data) {
-      const mimeType = inlineData.mimeType || inlineData.mime_type || "image/png";
-      return `data:${mimeType};base64,${inlineData.data}`;
-    }
-
-    const fileUri = part.fileData?.fileUri || part.file_data?.file_uri;
-    if (fileUri) {
-      return fileUri;
-    }
+  if (typeof data?.image_url === "string") {
+    return data.image_url;
   }
 
-  const generatedImageBytes =
-    data?.generatedImages?.[0]?.image?.imageBytes ||
-    data?.predictions?.[0]?.bytesBase64Encoded ||
-    data?.predictions?.[0]?.image?.imageBytes;
-
-  if (generatedImageBytes) {
-    return `data:image/png;base64,${generatedImageBytes}`;
-  }
-
-  return "";
-}
-
-function extractTextFromGeminiResponse(data) {
-  const parts = data?.candidates?.flatMap((candidate) => candidate?.content?.parts || []) || [];
-  return parts
-    .map((part) => part.text)
-    .filter(Boolean)
-    .join(" ")
-    .slice(0, 280);
-}
-
-function findImageUrl(value) {
-  if (!value || typeof value !== "object") {
-    return "";
-  }
-
-  if (typeof value.image_url === "string") {
-    return value.image_url;
-  }
-
-  if (typeof value.imageUrl === "string") {
-    return value.imageUrl;
-  }
-
-  if (value.image_url?.url) {
-    return value.image_url.url;
-  }
-
-  for (const item of Object.values(value)) {
-    if (Array.isArray(item)) {
-      for (const child of item) {
-        const nestedUrl = findImageUrl(child);
-        if (nestedUrl) {
-          return nestedUrl;
-        }
-      }
-    } else if (item && typeof item === "object") {
-      const nestedUrl = findImageUrl(item);
-      if (nestedUrl) {
-        return nestedUrl;
-      }
-    }
+  if (data?.imageBase64) {
+    return `data:${data.mimeType || "image/png"};base64,${data.imageBase64}`;
   }
 
   return "";
@@ -670,41 +567,35 @@ function setResultStatus(text, isReady) {
   resultStatus.classList.toggle("is-ready", isReady);
 }
 
-function getGeminiErrorMessage(data, status) {
-  const apiMessage = data?.error?.message || data?.message;
-  const normalizedMessage = String(apiMessage || "").toLowerCase();
+function getProxyEndpoint() {
+  return MOODBOARD_API_URL.trim();
+}
 
-  if (normalizedMessage.includes("api key not valid") || normalizedMessage.includes("api_key_invalid")) {
-    return "API-ключ Gemini недействителен. Проверьте ключ в начале файла script.js.";
-  }
+function isProxyConfigured() {
+  const endpoint = getProxyEndpoint();
+  return Boolean(endpoint) && !endpoint.includes("YOUR_VERCEL_PROJECT");
+}
 
-  if (normalizedMessage.includes("api key")) {
-    return "Проблема с API-ключом Gemini. Проверьте ключ в script.js.";
-  }
-
-  if (normalizedMessage.includes("billing") || normalizedMessage.includes("quota")) {
-    return "Gemini не выполнил запрос из-за лимита, квоты или биллинга. Проверьте настройки проекта Google AI Studio.";
-  }
-
-  if (normalizedMessage.includes("not found") || normalizedMessage.includes("not supported")) {
-    return "Выбранная модель Gemini недоступна для этого ключа или региона. Проверьте доступ к image generation.";
-  }
-
+function getProxyErrorMessage(status) {
   if (status === 400) {
-    return "Gemini отклонил запрос. Проверьте формат изображения и описание мудборда.";
+    return "Proxy отклонил запрос. Проверьте формат изображения и описание мудборда.";
   }
 
   if (status === 401 || status === 403) {
-    return "Gemini не принял API-ключ. Проверьте ключ и доступ к модели image generation.";
+    return "Proxy не смог авторизоваться в Gemini. Проверьте GEMINI_API_KEY в environment variables.";
   }
 
   if (status === 429) {
     return "Слишком много запросов к Gemini. Подождите немного и попробуйте снова.";
   }
 
-  return `Gemini вернул ошибку ${status}. Попробуйте ещё раз.`;
+  if (status >= 500) {
+    return "Serverless proxy временно недоступен. Проверьте Vercel Function logs и попробуйте ещё раз.";
+  }
+
+  return `Proxy вернул ошибку ${status}. Попробуйте ещё раз.`;
 }
 
 function getReadableApiError(error) {
-  return error?.message || "Не удалось создать мудборд. Проверьте Gemini API и попробуйте ещё раз.";
+  return error?.message || "Не удалось создать мудборд. Проверьте serverless proxy и попробуйте ещё раз.";
 }
