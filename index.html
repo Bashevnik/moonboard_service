@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Генератор мудбордов: загрузите референс, опишите настроение и получите готовый визуальный board через Gemini JSON."
+      content="Генератор мудбордов: загрузите референс, опишите настроение и получите готовый creative direction board 16:9."
     />
     <title>Генератор мудбордов</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -26,91 +26,77 @@
       </a>
 
       <nav class="header-actions" aria-label="Навигация">
-        <span>Gemini JSON</span>
-        <a href="#generator">Создать</a>
+        <a href="#generator">Начать</a>
       </nav>
     </header>
 
     <main class="app-shell" id="top">
       <section class="intro" aria-labelledby="pageTitle">
-        <div class="intro-copy">
-          <p class="eyebrow">Инструмент визуального направления</p>
-          <h1 id="pageTitle">Мудборд из референса и описания</h1>
+        <p class="eyebrow">Creative direction board</p>
+        <div class="intro-row">
+          <h1 id="pageTitle">Мудборд 16:9 из референса и описания</h1>
           <p>
-            Загрузите фото, опишите настроение, и сервис соберёт аккуратный
-            визуальный board: референс, палитру, материалы, свет, типографику и
-            ключевые слова.
+            Загрузите фото, опишите настроение, и сервис соберёт цельное визуальное направление:
+            цвет, материалы, свет, композицию и editorial-заметки для бренда, интерьера,
+            фотосессии, сайта или презентации.
           </p>
-        </div>
-        <div class="intro-meta" aria-label="Возможности сервиса">
-          <span>Бесплатная text model</span>
-          <span>HTML/CSS moodboard</span>
-          <span>Скачивание PNG</span>
         </div>
       </section>
 
-      <section class="workspace" id="generator" aria-label="Рабочее пространство генератора">
-        <aside class="input-card">
-          <div class="card-heading">
-            <p class="eyebrow">Ввод</p>
-            <h2>Исходные данные</h2>
+      <section class="generator-section" id="generator" aria-label="Форма генерации мудборда">
+        <form class="generator-form" id="generatorForm" novalidate>
+          <div class="upload-field">
+            <div class="field-label">
+              <label for="imageInput">Референс</label>
+              <span>PNG, JPG, WEBP</span>
+            </div>
+
+            <div
+              class="drop-zone"
+              id="dropZone"
+              role="button"
+              tabindex="0"
+              aria-controls="imageInput"
+            >
+              <input id="imageInput" type="file" accept="image/*" hidden />
+
+              <div class="drop-content" id="dropContent">
+                <span class="drop-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M12 4v10m0-10 4 4m-4-4-4 4" />
+                    <path d="M5 15v3a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-3" />
+                  </svg>
+                </span>
+                <span>Перетащите фото или выберите файл</span>
+              </div>
+
+              <div class="preview" id="previewWrap" hidden>
+                <img id="previewImage" alt="Превью загруженного референса" />
+                <div class="preview-meta">
+                  <strong id="fileName">Файл выбран</strong>
+                  <span>Готово</span>
+                </div>
+              </div>
+            </div>
+
+            <button class="text-button" id="removeImageButton" type="button" hidden>
+              Убрать файл
+            </button>
           </div>
 
-          <form class="generator-form" id="generatorForm" novalidate>
-            <div class="field-group">
-              <div class="field-label">
-                <label for="imageInput">Референс</label>
-                <span>Фото или коллаж</span>
-              </div>
-
-              <div
-                class="drop-zone"
-                id="dropZone"
-                role="button"
-                tabindex="0"
-                aria-controls="imageInput"
-              >
-                <input id="imageInput" type="file" accept="image/*" hidden />
-
-                <div class="drop-content" id="dropContent">
-                  <span class="drop-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" focusable="false">
-                      <path d="M12 4v10m0-10 4 4m-4-4-4 4" />
-                      <path d="M5 15v3a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-3" />
-                    </svg>
-                  </span>
-                  <strong>Перетащите изображение сюда</strong>
-                  <span>или выберите файл PNG, JPG, WEBP</span>
-                </div>
-
-                <div class="preview" id="previewWrap" hidden>
-                  <img id="previewImage" alt="Превью загруженного референса" />
-                  <div class="preview-meta">
-                    <strong id="fileName">Файл выбран</strong>
-                    <span>Готово к генерации</span>
-                  </div>
-                </div>
-              </div>
-
-              <button class="text-button" id="removeImageButton" type="button" hidden>
-                Убрать файл
-              </button>
+          <div class="prompt-field">
+            <div class="field-label">
+              <label for="promptInput">Описание мудборда</label>
+              <span>Стиль, материалы, настроение</span>
             </div>
+            <textarea
+              id="promptInput"
+              rows="4"
+              placeholder="Например: камерный интерьер для премиального бренда, тёплый свет, натуральное дерево, оливковые акценты, спокойная типографика"
+            ></textarea>
+          </div>
 
-            <div class="field-group">
-              <div class="field-label">
-                <label for="promptInput">Описание мудборда</label>
-                <span>Стиль, материалы, настроение</span>
-              </div>
-              <textarea
-                id="promptInput"
-                rows="7"
-                placeholder="Например: камерный интерьер для премиального бренда, тёплый свет, натуральное дерево, оливковые акценты, спокойная типографика, ощущение дизайнерской студии"
-              ></textarea>
-            </div>
-
-            <div class="error-message" id="formError" role="alert" hidden></div>
-
+          <div class="action-field">
             <button class="primary-button" id="generateButton" type="submit">
               <span class="button-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" focusable="false">
@@ -122,61 +108,59 @@
 
             <div class="loader" id="loader" aria-live="polite" hidden>
               <span class="spinner" aria-hidden="true"></span>
-              <span>Gemini описывает визуальное направление...</span>
+              <span>Собираем визуальное направление...</span>
             </div>
-          </form>
-
-          <p class="security-note">
-            GitHub Pages отправляет запрос только в serverless proxy. Gemini API key
-            хранится в environment variable и не попадает во frontend-код.
-          </p>
-        </aside>
-
-        <section class="output-card" aria-labelledby="resultTitle">
-          <div class="result-header">
-            <div>
-              <p class="eyebrow">Результат</p>
-              <h2 id="resultTitle">Готовый moodboard</h2>
-            </div>
-            <span class="status-pill" id="resultStatus">Ожидает данных</span>
           </div>
 
-          <div class="empty-state" id="emptyState">
-            <div class="empty-board" aria-hidden="true">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
+          <div class="error-message" id="formError" role="alert" hidden></div>
+        </form>
+      </section>
+
+      <section class="result-area" aria-labelledby="resultTitle">
+        <div class="result-bar">
+          <div>
+            <p class="eyebrow">Результат</p>
+            <h2 id="resultTitle">Creative direction board</h2>
+          </div>
+          <span class="status-pill" id="resultStatus">Ожидает данных</span>
+        </div>
+
+        <div class="empty-state" id="emptyState">
+          <div class="empty-board" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div>
             <h3>Мудборд появится здесь</h3>
-            <p>
-              После генерации вы увидите готовую визуальную доску, собранную из
-              вашего фото, палитры, материалов, настроения и композиционных подсказок.
-            </p>
+            <p>Формат результата — 16:9, готовый к скачиванию в PNG 1920×1080.</p>
+          </div>
+        </div>
+
+        <div class="result-view" id="resultSection" hidden>
+          <div class="generated-board-wrap">
+            <div class="generated-board" id="moodboardCanvas" aria-label="Готовый мудборд 16:9"></div>
           </div>
 
-          <div class="result-view" id="resultSection" hidden>
-            <div class="generated-board-wrap">
-              <div class="generated-board" id="moodboardCanvas" aria-label="Готовый мудборд"></div>
+          <div class="result-actions">
+            <div>
+              <strong>Мудборд готов</strong>
+              <span id="resultMeta">Формат 16:9</span>
             </div>
-
-            <div class="result-actions">
-              <div>
-                <strong>Мудборд готов</strong>
-                <span id="resultMeta">Сгенерировано через Gemini JSON</span>
-              </div>
-              <div class="toolbar-actions">
-                <button class="secondary-button" id="generateAgainButton" type="button">Изменить</button>
-                <button class="primary-button compact" id="downloadButton" type="button">Скачать PNG</button>
-              </div>
+            <div class="toolbar-actions">
+              <button class="secondary-button" id="generateAgainButton" type="button">Изменить</button>
+              <button class="primary-button compact" id="downloadButton" type="button">Скачать PNG</button>
             </div>
           </div>
-        </section>
+        </div>
       </section>
     </main>
 
     <footer class="site-footer">
-      <span>Статический frontend для GitHub Pages</span>
-      <span>HTML · CSS · Vanilla JavaScript</span>
+      <span>GitHub Pages frontend</span>
+      <span>Serverless proxy</span>
+      <span>PNG 1920×1080</span>
     </footer>
   </body>
 </html>

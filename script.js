@@ -1,4 +1,6 @@
 const MOODBOARD_API_URL = "https://moonboard-service-vercel.vercel.app/api/generate-moodboard";
+const EXPORT_WIDTH = 1920;
+const EXPORT_HEIGHT = 1080;
 
 // API key не хранится во frontend. GitHub Pages отправляет запрос только
 // в serverless proxy, а proxy читает GEMINI_API_KEY из environment variable.
@@ -26,12 +28,12 @@ const generateAgainButton = document.getElementById("generateAgainButton");
 
 const DEFAULT_MOODBOARD = {
   title: "Визуальное направление",
-  mood: "Спокойная, цельная и выразительная визуальная история.",
-  colorPalette: ["#1E1E1E", "#A46C44", "#C9B79E", "#E8E4DC", "#F8F7F4"],
-  materials: ["натуральная фактура", "матовая поверхность", "мягкая ткань"],
+  mood: "Спокойная, цельная и выразительная визуальная история для бренда, интерьера или презентации.",
+  colorPalette: ["#1E1E1E", "#A46C44", "#617A55", "#C9B79E", "#F8F7F4"],
+  materials: ["натуральная фактура", "матовая поверхность", "мягкая ткань", "тёплая бумага"],
   keywords: ["спокойно", "цельно", "редакционно", "тепло"],
-  composition: "Крупный референс, палитра, фактуры и детали собраны в editorial-сетку.",
-  typographyMood: "Сдержанная современная типографика с аккуратным ритмом.",
+  composition: "Крупный референс, детальные фрагменты, палитра и заметки собраны в editorial-композицию.",
+  typographyMood: "Сдержанная современная типографика с уверенным заголовком и аккуратным ритмом.",
   lighting: "Мягкий естественный свет без резких контрастов.",
 };
 
@@ -217,7 +219,7 @@ function setGeneratingState(isLoading) {
   generateButtonText.textContent = isLoading ? "Создаём мудборд..." : "Создать мудборд";
 
   if (isLoading) {
-    setResultStatus("Запрос к Gemini JSON", false);
+    setResultStatus("Генерация", false);
   }
 }
 
@@ -297,14 +299,14 @@ function normalizeMoodboard(value) {
   const source = value && typeof value === "object" ? value : {};
 
   return {
-    title: toText(source.title, DEFAULT_MOODBOARD.title),
-    mood: toText(source.mood, DEFAULT_MOODBOARD.mood),
+    title: limitText(toText(source.title, DEFAULT_MOODBOARD.title), 35),
+    mood: limitText(toText(source.mood, DEFAULT_MOODBOARD.mood), 160),
     colorPalette: normalizePalette(source.colorPalette),
-    materials: normalizeList(source.materials, DEFAULT_MOODBOARD.materials),
-    keywords: normalizeList(source.keywords, DEFAULT_MOODBOARD.keywords),
-    composition: toText(source.composition, DEFAULT_MOODBOARD.composition),
-    typographyMood: toText(source.typographyMood, DEFAULT_MOODBOARD.typographyMood),
-    lighting: toText(source.lighting, DEFAULT_MOODBOARD.lighting),
+    materials: normalizeList(source.materials, DEFAULT_MOODBOARD.materials, 4, 34),
+    keywords: normalizeList(source.keywords, DEFAULT_MOODBOARD.keywords, 4, 22),
+    composition: limitText(toText(source.composition, DEFAULT_MOODBOARD.composition), 120),
+    typographyMood: limitText(toText(source.typographyMood, DEFAULT_MOODBOARD.typographyMood), 120),
+    lighting: limitText(toText(source.lighting, DEFAULT_MOODBOARD.lighting), 120),
   };
 }
 
@@ -317,19 +319,32 @@ function normalizePalette(colors) {
   return mergeUnique(normalized, DEFAULT_MOODBOARD.colorPalette).slice(0, 5);
 }
 
-function normalizeList(values, fallback) {
+function normalizeList(values, fallback, maxItems, maxLength) {
   const list = Array.isArray(values) ? values : [];
   return mergeUnique(
     list
-      .map((item) => String(item || "").trim())
+      .map((item) => limitText(String(item || "").trim(), maxLength))
       .filter(Boolean),
-    fallback
-  ).slice(0, 6);
+    fallback.map((item) => limitText(item, maxLength))
+  ).slice(0, maxItems);
 }
 
 function toText(value, fallback) {
   const text = String(value || "").trim();
   return text || fallback;
+}
+
+function limitText(value, maxLength) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  const sliced = text.slice(0, Math.max(0, maxLength - 3)).trimEnd();
+  const lastSpace = sliced.lastIndexOf(" ");
+  const readable = lastSpace > Math.floor(maxLength * 0.62) ? sliced.slice(0, lastSpace) : sliced;
+  return `${readable}...`;
 }
 
 function mergeUnique(...groups) {
@@ -354,12 +369,9 @@ function renderResult(moodboard) {
   renderMoodboardBoard(moodboard);
   emptyState.hidden = true;
   resultSection.hidden = false;
-  resultMeta.textContent = `Сгенерировано ${new Date().toLocaleTimeString("ru-RU", {
-    hour: "2-digit",
-    minute: "2-digit",
-  })}`;
+  resultMeta.textContent = `Готово к скачиванию ${EXPORT_WIDTH}×${EXPORT_HEIGHT}`;
   setResultStatus("Готово", true);
-  resultSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  resultSection.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function hideResult() {
@@ -373,29 +385,61 @@ function hideResult() {
 function renderMoodboardBoard(moodboard) {
   const referenceImageSrc = previewObjectUrl || "";
   const palette = moodboard.colorPalette;
-  const primaryColor = palette[1] || "#A46C44";
+  const accentColor = palette[1] || "#A46C44";
+  const deepColor = getDarkestColor(palette);
   const softColor = palette[3] || "#E8E4DC";
 
-  moodboardCanvas.style.setProperty("--board-accent", primaryColor);
+  moodboardCanvas.style.setProperty("--board-accent", accentColor);
+  moodboardCanvas.style.setProperty("--board-deep", deepColor);
   moodboardCanvas.style.setProperty("--board-soft", softColor);
 
   moodboardCanvas.innerHTML = `
-    <article class="board-panel board-hero">
-      <img src="${escapeAttribute(referenceImageSrc)}" alt="Референс мудборда" />
-      <div class="board-hero-caption">
-        <span>Референс</span>
-        <strong>${escapeHtml(moodboard.title)}</strong>
-      </div>
-    </article>
+    <div class="board-texture" aria-hidden="true">
+      <img src="${escapeAttribute(referenceImageSrc)}" alt="" />
+    </div>
 
-    <article class="board-panel board-title">
-      <span class="board-kicker">Mood</span>
+    <div class="board-rule board-rule-top" aria-hidden="true"></div>
+    <div class="board-rule board-rule-bottom" aria-hidden="true"></div>
+
+    <section class="board-main-photo" aria-label="Главный референс">
+      <img src="${escapeAttribute(referenceImageSrc)}" alt="Главный референс мудборда" />
+      <span class="board-photo-label">reference / 01</span>
+    </section>
+
+    <section class="board-editorial">
+      <span class="board-number">01</span>
+      <p class="board-kicker">Creative direction</p>
       <h3>${escapeHtml(moodboard.title)}</h3>
-      <p>${escapeHtml(moodboard.mood)}</p>
-    </article>
+      <p class="board-mood">${escapeHtml(moodboard.mood)}</p>
+      <div class="board-keywords" aria-label="Ключевые слова">
+        ${moodboard.keywords
+          .map(
+            (keyword, index) => `
+              <span>
+                <b>${String(index + 1).padStart(2, "0")}</b>
+                ${escapeHtml(keyword)}
+              </span>
+            `
+          )
+          .join("")}
+      </div>
+    </section>
 
-    <article class="board-panel board-palette">
-      <span class="board-kicker">Палитра</span>
+    <section class="board-detail board-detail-one" aria-label="Дополнительный фрагмент 1">
+      <img src="${escapeAttribute(referenceImageSrc)}" alt="" />
+      <span>texture crop</span>
+    </section>
+
+    <section class="board-detail board-detail-two" aria-label="Дополнительный фрагмент 2">
+      <img src="${escapeAttribute(referenceImageSrc)}" alt="" />
+      <span>light crop</span>
+    </section>
+
+    <section class="board-palette" aria-label="Палитра цветов">
+      <div class="board-section-label">
+        <span>02</span>
+        <strong>Palette</strong>
+      </div>
       <div class="board-swatches">
         ${palette
           .map(
@@ -408,36 +452,48 @@ function renderMoodboardBoard(moodboard) {
           )
           .join("")}
       </div>
-    </article>
+    </section>
 
-    <article class="board-panel board-materials">
-      <span class="board-kicker">Материалы</span>
-      <div class="board-tags">
-        ${moodboard.materials.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+    <section class="board-materials" aria-label="Материалы">
+      <div class="board-section-label">
+        <span>03</span>
+        <strong>Materials</strong>
       </div>
-    </article>
-
-    <article class="board-panel board-keywords">
-      <span class="board-kicker">Ключевые слова</span>
-      <div class="board-tags">
-        ${moodboard.keywords.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+      <div class="board-material-list">
+        ${moodboard.materials
+          .map(
+            (material) => `
+              <span>${escapeHtml(material)}</span>
+            `
+          )
+          .join("")}
       </div>
-    </article>
+    </section>
 
-    <article class="board-panel board-note">
-      <span class="board-kicker">Композиция</span>
-      <p>${escapeHtml(moodboard.composition)}</p>
-    </article>
+    <section class="board-notes" aria-label="Заметки направления">
+      <article>
+        <span>composition</span>
+        <p>${escapeHtml(moodboard.composition)}</p>
+      </article>
+      <article>
+        <span>type</span>
+        <p>${escapeHtml(moodboard.typographyMood)}</p>
+      </article>
+      <article>
+        <span>light</span>
+        <p>${escapeHtml(moodboard.lighting)}</p>
+      </article>
+    </section>
 
-    <article class="board-panel board-note">
-      <span class="board-kicker">Типографика</span>
-      <p>${escapeHtml(moodboard.typographyMood)}</p>
-    </article>
+    <section class="board-detail board-detail-three" aria-label="Дополнительный фрагмент 3">
+      <img src="${escapeAttribute(referenceImageSrc)}" alt="" />
+      <span>mood crop</span>
+    </section>
 
-    <article class="board-panel board-note board-light">
-      <span class="board-kicker">Свет</span>
-      <p>${escapeHtml(moodboard.lighting)}</p>
-    </article>
+    <footer class="board-footer">
+      <span>moodboard / 16:9</span>
+      <span>visual direction</span>
+    </footer>
   `;
 }
 
@@ -456,12 +512,24 @@ async function downloadGeneratedMoodboard() {
   downloadButton.disabled = true;
   downloadButton.textContent = "Готовим PNG...";
 
-  try {
-    await waitForImages(moodboardCanvas);
+  const exportStage = document.createElement("div");
+  const exportBoard = moodboardCanvas.cloneNode(true);
+  exportBoard.id = "moodboardExportCanvas";
+  exportBoard.classList.add("export-board");
+  exportStage.className = "export-stage";
+  exportStage.appendChild(exportBoard);
+  document.body.appendChild(exportStage);
 
-    const canvas = await window.html2canvas(moodboardCanvas, {
-      backgroundColor: "#F8F7F4",
-      scale: Math.min(window.devicePixelRatio || 1, 2),
+  try {
+    await waitForImages(exportBoard);
+
+    const canvas = await window.html2canvas(exportBoard, {
+      backgroundColor: "#F4EFE6",
+      width: EXPORT_WIDTH,
+      height: EXPORT_HEIGHT,
+      windowWidth: EXPORT_WIDTH,
+      windowHeight: EXPORT_HEIGHT,
+      scale: 1,
       useCORS: true,
     });
     const pngDataUrl = canvas.toDataURL("image/png");
@@ -470,9 +538,29 @@ async function downloadGeneratedMoodboard() {
     console.error("[Moodboard] download error", error);
     showError("Не удалось скачать мудборд. Попробуйте ещё раз.");
   } finally {
+    exportStage.remove();
     downloadButton.disabled = false;
     downloadButton.textContent = "Скачать PNG";
   }
+}
+
+function getDarkestColor(colors) {
+  return [...colors].sort((first, second) => getColorLuminance(first) - getColorLuminance(second))[0] || "#1E1E1E";
+}
+
+function getColorLuminance(hexColor) {
+  const hex = String(hexColor || "").replace("#", "");
+
+  if (!/^[0-9A-F]{6}$/i.test(hex)) {
+    return 1;
+  }
+
+  const channels = [0, 2, 4].map((start) => parseInt(hex.slice(start, start + 2), 16) / 255);
+  const [red, green, blue] = channels.map((channel) =>
+    channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+  );
+
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
 }
 
 function waitForImages(container) {
@@ -480,7 +568,7 @@ function waitForImages(container) {
 
   return Promise.all(
     images.map((image) => {
-      if (image.complete) {
+      if (image.complete && image.naturalWidth > 0) {
         return Promise.resolve();
       }
 
