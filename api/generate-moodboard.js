@@ -1,5 +1,5 @@
-const GEMINI_MODEL = "gemini-2.5-flash-image";
-const GEMINI_FALLBACK_MODEL = "gemini-2.5-flash-image-preview";
+const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_FALLBACK_MODEL = "gemini-1.5-flash";
 const MAX_IMAGE_BASE64_LENGTH = 8 * 1024 * 1024;
 
 module.exports = async function handler(request, response) {
@@ -34,7 +34,6 @@ module.exports = async function handler(request, response) {
     const prompt = String(body.prompt || "").trim();
     const mimeType = String(body.mimeType || "image/png").trim();
     const imageBase64 = normalizeBase64(body.imageBase64 || body.image || "");
-
     const validationError = getValidationError({ imageBase64, mimeType, prompt });
 
     if (validationError) {
@@ -53,7 +52,7 @@ module.exports = async function handler(request, response) {
 
     if (!geminiResponse.ok) {
       logRawGeminiError({
-        label: "raw Gemini error response",
+        label: "raw Gemini text-model error response",
         model,
         geminiResponse,
         rawText: geminiResult.rawText,
@@ -66,20 +65,10 @@ module.exports = async function handler(request, response) {
       return;
     }
 
-    const imageUrl = extractImageFromGeminiResponse(geminiData);
-
-    if (!imageUrl) {
-      const textResponse = extractTextFromGeminiResponse(geminiData);
-      sendJson(response, 502, {
-        error: textResponse
-          ? `Gemini ответил без изображения: ${textResponse}`
-          : "Gemini ответил без изображения. Проверьте доступ к image generation для этого ключа.",
-      });
-      return;
-    }
+    const moodboard = normalizeMoodboard(extractMoodboardFromGeminiResponse(geminiData));
 
     sendJson(response, 200, {
-      imageUrl,
+      moodboard,
       model,
       generatedAt: new Date().toISOString(),
     });
@@ -106,7 +95,7 @@ async function requestGeminiWithFallback({ apiKey, imageBase64, mimeType, prompt
   }
 
   logRawGeminiError({
-    label: "Gemini model not found, trying fallback",
+    label: "Gemini text model not found, trying fallback",
     model: GEMINI_MODEL,
     geminiResponse: primaryResult.geminiResponse,
     rawText: primaryResult.rawText,
@@ -127,7 +116,7 @@ async function requestGeminiWithFallback({ apiKey, imageBase64, mimeType, prompt
 async function requestGeminiModel({ apiKey, imageBase64, mimeType, prompt, fileName, model }) {
   const geminiApiUrl = getGeminiApiUrl(model);
 
-  console.info("[Moodboard API] start Gemini request", {
+  console.info("[Moodboard API] start Gemini JSON request", {
     model,
     fileName,
     mimeType,
@@ -146,7 +135,7 @@ async function requestGeminiModel({ apiKey, imageBase64, mimeType, prompt, fileN
 
   const { data: geminiData, rawText } = await parseJsonResponse(geminiResponse);
 
-  console.info("[Moodboard API] Gemini response", {
+  console.info("[Moodboard API] Gemini JSON response", {
     model,
     ok: geminiResponse.ok,
     status: geminiResponse.status,
@@ -161,24 +150,163 @@ async function requestGeminiModel({ apiKey, imageBase64, mimeType, prompt, fileN
 }
 
 function getGeminiApiUrl(model) {
-  return `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`;
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 }
 
-function logRawGeminiError({ label, model, geminiResponse, rawText, parsedResponse, extra = {} }) {
-  console.error(
-    `[Moodboard API] ${label}\n${JSON.stringify(
+function buildGeminiRequestBody({ imageBase64, mimeType, prompt }) {
+  return {
+    contents: [
       {
-        model,
-        status: geminiResponse.status,
-        statusText: geminiResponse.statusText,
-        rawText,
-        parsedResponse,
-        ...extra,
+        role: "user",
+        parts: [
+          { text: buildGeminiPrompt(prompt) },
+          {
+            inlineData: {
+              mimeType,
+              data: imageBase64,
+            },
+          },
+        ],
       },
-      null,
-      2
-    )}`
-  );
+    ],
+    generationConfig: {
+      temperature: 0.85,
+      responseMimeType: "application/json",
+    },
+  };
+}
+
+function buildGeminiPrompt(prompt) {
+  return `You are a senior creative director.
+
+Analyze the uploaded reference image and the user's description.
+Return only valid JSON. No markdown, no comments, no extra text.
+
+User description:
+${prompt}
+
+Create a moodboard concept in Russian. Use the image as inspiration for color, materials, lighting and atmosphere.
+
+JSON shape:
+{
+  "moodboard": {
+    "title": "short Russian title",
+    "mood": "one concise Russian sentence",
+    "colorPalette": ["#HEX", "#HEX", "#HEX", "#HEX", "#HEX"],
+    "materials": ["material 1", "material 2", "material 3", "material 4"],
+    "keywords": ["keyword 1", "keyword 2", "keyword 3", "keyword 4", "keyword 5"],
+    "composition": "Russian composition direction",
+    "typographyMood": "Russian typography direction",
+    "lighting": "Russian lighting direction"
+  }
+}`;
+}
+
+async function parseJsonResponse(response) {
+  const text = await response.text();
+
+  if (!text) {
+    return { data: {}, rawText: "" };
+  }
+
+  try {
+    return { data: JSON.parse(text), rawText: text };
+  } catch (error) {
+    return { data: { error: { message: text } }, rawText: text };
+  }
+}
+
+function extractMoodboardFromGeminiResponse(data) {
+  if (data?.moodboard) {
+    return data.moodboard;
+  }
+
+  const text = extractTextFromGeminiResponse(data);
+
+  if (!text) {
+    throw new Error("Gemini вернул ответ без JSON-структуры moodboard.");
+  }
+
+  try {
+    const parsed = JSON.parse(stripJsonFences(text));
+    return parsed.moodboard || parsed;
+  } catch (error) {
+    console.error("[Moodboard API] cannot parse Gemini moodboard JSON", { text });
+    throw new Error("Gemini вернул JSON в неожиданном формате.");
+  }
+}
+
+function extractTextFromGeminiResponse(data) {
+  const parts = data?.candidates?.flatMap((candidate) => candidate?.content?.parts || []) || [];
+  return parts
+    .map((part) => part.text)
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function stripJsonFences(text) {
+  return String(text)
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "");
+}
+
+function normalizeMoodboard(value) {
+  const source = value && typeof value === "object" ? value : {};
+
+  return {
+    title: toText(source.title, "Визуальное направление"),
+    mood: toText(source.mood, "Спокойная, цельная и выразительная визуальная история."),
+    colorPalette: normalizePalette(source.colorPalette),
+    materials: normalizeList(source.materials, ["натуральная фактура", "матовая поверхность", "мягкая ткань"]),
+    keywords: normalizeList(source.keywords, ["спокойно", "цельно", "редакционно", "тепло"]),
+    composition: toText(source.composition, "Крупный референс, палитра, фактуры и детали собраны в editorial-сетку."),
+    typographyMood: toText(source.typographyMood, "Сдержанная современная типографика с аккуратным ритмом."),
+    lighting: toText(source.lighting, "Мягкий естественный свет без резких контрастов."),
+  };
+}
+
+function normalizePalette(colors) {
+  const values = Array.isArray(colors) ? colors : [];
+  const normalized = values
+    .map((color) => String(color || "").trim().toUpperCase())
+    .filter((color) => /^#[0-9A-F]{6}$/.test(color));
+
+  return mergeUnique(normalized, ["#1E1E1E", "#A46C44", "#C9B79E", "#E8E4DC", "#F8F7F4"]).slice(0, 5);
+}
+
+function normalizeList(values, fallback) {
+  const list = Array.isArray(values) ? values : [];
+  return mergeUnique(
+    list
+      .map((item) => String(item || "").trim())
+      .filter(Boolean),
+    fallback
+  ).slice(0, 6);
+}
+
+function toText(value, fallback) {
+  const text = String(value || "").trim();
+  return text || fallback;
+}
+
+function mergeUnique(...groups) {
+  const seen = new Set();
+  const result = [];
+
+  groups.flat().forEach((value) => {
+    const normalized = String(value || "").trim();
+    const key = normalized.toLowerCase();
+
+    if (normalized && !seen.has(key)) {
+      seen.add(key);
+      result.push(normalized);
+    }
+  });
+
+  return result;
 }
 
 function setCorsHeaders(request, response) {
@@ -194,7 +322,7 @@ function setCorsHeaders(request, response) {
 }
 
 function isOriginAllowed(origin = "") {
-  if (!origin) {
+  if (!origin || origin === "null") {
     return true;
   }
 
@@ -266,128 +394,6 @@ function getValidationError({ imageBase64, mimeType, prompt }) {
   return "";
 }
 
-function buildGeminiRequestBody({ imageBase64, mimeType, prompt }) {
-  return {
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { text: buildGeminiPrompt(prompt) },
-          {
-            inlineData: {
-              mimeType,
-              data: imageBase64,
-            },
-          },
-        ],
-      },
-    ],
-  };
-}
-
-function buildGeminiPrompt(prompt) {
-  return `Create a beautiful visual moodboard based on the uploaded reference image and this description: ${prompt}.
-Use the reference image only as inspiration for colors, textures, mood, lighting and visual direction.
-Generate one square 1:1 creative direction moodboard image.
-The result should look like a polished Behance moodboard, Pinterest editorial board, fashion campaign board, or premium creative direction board.
-Include a strong main visual, supporting reference panels, color palette, material textures, lighting references, typography mood samples as abstract shapes only, and a cohesive editorial composition.
-No readable text, no watermark, no logos.`;
-}
-
-async function parseJsonResponse(response) {
-  const text = await response.text();
-
-  if (!text) {
-    return { data: {}, rawText: "" };
-  }
-
-  try {
-    return { data: JSON.parse(text), rawText: text };
-  } catch (error) {
-    return { data: { error: { message: text } }, rawText: text };
-  }
-}
-
-function extractImageFromGeminiResponse(data) {
-  const directUrl = findImageUrl(data);
-
-  if (directUrl) {
-    return directUrl;
-  }
-
-  const parts = data?.candidates?.flatMap((candidate) => candidate?.content?.parts || []) || [];
-
-  for (const part of parts) {
-    const inlineData = part.inlineData || part.inline_data;
-
-    if (inlineData?.data) {
-      const mimeType = inlineData.mimeType || inlineData.mime_type || "image/png";
-      return `data:${mimeType};base64,${inlineData.data}`;
-    }
-
-    const fileUri = part.fileData?.fileUri || part.file_data?.file_uri;
-    if (fileUri) {
-      return fileUri;
-    }
-  }
-
-  const generatedImageBytes =
-    data?.generatedImages?.[0]?.image?.imageBytes ||
-    data?.predictions?.[0]?.bytesBase64Encoded ||
-    data?.predictions?.[0]?.image?.imageBytes;
-
-  if (generatedImageBytes) {
-    return `data:image/png;base64,${generatedImageBytes}`;
-  }
-
-  return "";
-}
-
-function extractTextFromGeminiResponse(data) {
-  const parts = data?.candidates?.flatMap((candidate) => candidate?.content?.parts || []) || [];
-  return parts
-    .map((part) => part.text)
-    .filter(Boolean)
-    .join(" ")
-    .slice(0, 280);
-}
-
-function findImageUrl(value) {
-  if (!value || typeof value !== "object") {
-    return "";
-  }
-
-  if (typeof value.image_url === "string") {
-    return value.image_url;
-  }
-
-  if (typeof value.imageUrl === "string") {
-    return value.imageUrl;
-  }
-
-  if (value.image_url?.url) {
-    return value.image_url.url;
-  }
-
-  for (const item of Object.values(value)) {
-    if (Array.isArray(item)) {
-      for (const child of item) {
-        const nestedUrl = findImageUrl(child);
-        if (nestedUrl) {
-          return nestedUrl;
-        }
-      }
-    } else if (item && typeof item === "object") {
-      const nestedUrl = findImageUrl(item);
-      if (nestedUrl) {
-        return nestedUrl;
-      }
-    }
-  }
-
-  return "";
-}
-
 function isModelNotFoundError(data) {
   const apiMessage = data?.error?.message || data?.message;
   const normalizedMessage = String(apiMessage || "").toLowerCase();
@@ -417,7 +423,7 @@ function getReadableGeminiError(data, status) {
   }
 
   if (normalizedMessage.includes("not found") || normalizedMessage.includes("not supported")) {
-    return "Модель Gemini image generation недоступна для этого ключа или региона.";
+    return "Текстовая модель Gemini недоступна для этого ключа или региона.";
   }
 
   if (status === 400) {
@@ -425,7 +431,7 @@ function getReadableGeminiError(data, status) {
   }
 
   if (status === 401 || status === 403) {
-    return "Gemini не принял API-ключ. Проверьте переменную GEMINI_API_KEY и доступ к image generation.";
+    return "Gemini не принял API-ключ. Проверьте переменную GEMINI_API_KEY.";
   }
 
   if (status === 429) {
@@ -433,6 +439,23 @@ function getReadableGeminiError(data, status) {
   }
 
   return `Gemini вернул ошибку ${status}. Попробуйте ещё раз.`;
+}
+
+function logRawGeminiError({ label, model, geminiResponse, rawText, parsedResponse, extra = {} }) {
+  console.error(
+    `[Moodboard API] ${label}\n${JSON.stringify(
+      {
+        model,
+        status: geminiResponse.status,
+        statusText: geminiResponse.statusText,
+        rawText,
+        parsedResponse,
+        ...extra,
+      },
+      null,
+      2
+    )}`
+  );
 }
 
 function sendJson(response, status, payload) {
