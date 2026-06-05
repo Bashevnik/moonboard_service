@@ -1,6 +1,9 @@
 const MOODBOARD_API_URL = "https://moonboard-service-vercel.vercel.app/api/generate-moodboard";
 const EXPORT_WIDTH = 1920;
 const EXPORT_HEIGHT = 1080;
+const IMAGE_MAX_DIMENSION = 1200;
+const IMAGE_JPEG_QUALITY = 0.8;
+const IS_DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") === "1";
 
 // API key не хранится во frontend. GitHub Pages отправляет запрос только
 // в serverless proxy, а proxy читает GEMINI_API_KEY из environment variable.
@@ -25,6 +28,15 @@ const resultMeta = document.getElementById("resultMeta");
 const moodboardCanvas = document.getElementById("moodboardCanvas");
 const downloadButton = document.getElementById("downloadButton");
 const generateAgainButton = document.getElementById("generateAgainButton");
+const debugPanel = document.getElementById("debugPanel");
+const debugUpdatedAt = document.getElementById("debugUpdatedAt");
+const debugOriginalSize = document.getElementById("debugOriginalSize");
+const debugCompressedSize = document.getElementById("debugCompressedSize");
+const debugBase64Size = document.getElementById("debugBase64Size");
+const debugApiStatus = document.getElementById("debugApiStatus");
+const debugErrorText = document.getElementById("debugErrorText");
+const debugUserAgent = document.getElementById("debugUserAgent");
+const debugOrigin = document.getElementById("debugOrigin");
 
 const DEFAULT_MOODBOARD = {
   title: "Визуальное направление",
@@ -41,6 +53,26 @@ let selectedImageFile = null;
 let previewObjectUrl = "";
 let currentMoodboard = null;
 let isGenerating = false;
+
+window.__MOODBOARD_LAST_DIAGNOSTICS = {};
+
+initDebugPanel();
+
+window.addEventListener("error", (event) => {
+  logFrontendError("window error", {
+    message: event.message,
+    source: event.filename,
+    line: event.lineno,
+    column: event.colno,
+    error: serializeError(event.error),
+  });
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  logFrontendError("unhandled promise rejection", {
+    reason: serializeError(event.reason),
+  });
+});
 
 dropZone.addEventListener("click", (event) => {
   if (!event.target.closest("button")) {
@@ -111,6 +143,8 @@ generatorForm.addEventListener("submit", async (event) => {
     console.info("[Moodboard] generation start", {
       fileName: selectedImageFile.name,
       fileType: selectedImageFile.type,
+      fileSizeBytes: selectedImageFile.size,
+      fileSizeFormatted: formatBytes(selectedImageFile.size),
       promptLength: promptText.length,
     });
 
@@ -122,6 +156,9 @@ generatorForm.addEventListener("submit", async (event) => {
       colors: moodboard.colorPalette.length,
     });
   } catch (error) {
+    logFrontendError("generation failed", {
+      error: serializeError(error),
+    });
     console.error("[Moodboard] api error", error);
     showError(getReadableApiError(error));
     setResultStatus("Ошибка генерации", false);
@@ -153,6 +190,18 @@ function handleImageFile(file) {
 
   selectedImageFile = file;
   clearError();
+  setLastDiagnostics({
+    image: {
+      original: {
+        name: file.name,
+        type: file.type || "unknown",
+        sizeBytes: file.size,
+        sizeFormatted: formatBytes(file.size),
+      },
+    },
+    apiResponse: null,
+    lastFrontendError: null,
+  });
 
   if (previewObjectUrl) {
     URL.revokeObjectURL(previewObjectUrl);
@@ -179,6 +228,12 @@ function clearSelectedImage() {
     URL.revokeObjectURL(previewObjectUrl);
     previewObjectUrl = "";
   }
+
+  setLastDiagnostics({
+    image: null,
+    apiResponse: null,
+    lastFrontendError: null,
+  });
 }
 
 function getValidationError(promptText) {
@@ -200,11 +255,13 @@ function getValidationError(promptText) {
 function showError(message) {
   formError.textContent = message;
   formError.hidden = false;
+  setLastDiagnostics({ visibleError: message });
 }
 
 function clearError() {
   formError.textContent = "";
   formError.hidden = true;
+  setLastDiagnostics({ visibleError: "" });
 }
 
 function setGeneratingState(isLoading) {
@@ -233,28 +290,40 @@ function fileToBase64(file) {
       resolve(base64);
     };
 
-    reader.onerror = () => reject(new Error("Не удалось прочитать изображение."));
+    reader.onerror = () => {
+      const error = new Error("Не удалось прочитать изображение.");
+      logFrontendError("file read failed", {
+        fileName: file.name,
+        fileSizeBytes: file.size,
+        error: serializeError(error),
+      });
+      reject(error);
+    };
     reader.readAsDataURL(file);
   });
 }
 
 async function generateMoodboardWithGemini(imageFile, promptText) {
-  const imageBase64 = await fileToBase64(imageFile);
+  const preparedImage = await prepareImageForApi(imageFile);
+  const imageBase64 = preparedImage.base64;
   const requestBody = {
     imageBase64,
-    mimeType: imageFile.type || "image/png",
+    mimeType: preparedImage.file.type || "image/jpeg",
     prompt: promptText,
-    fileName: imageFile.name,
+    fileName: preparedImage.file.name,
   };
   const requestStartedAt = performance.now();
 
   console.info("[Moodboard] sending JSON request", {
     endpoint: MOODBOARD_API_URL,
     method: "POST",
-    fileName: imageFile.name,
-    fileType: imageFile.type,
+    fileName: preparedImage.file.name,
+    fileType: preparedImage.file.type,
     promptLength: promptText.length,
     hasImage: Boolean(imageBase64),
+    originalSize: preparedImage.diagnostics.original.sizeFormatted,
+    compressedSize: preparedImage.diagnostics.compressed.sizeFormatted,
+    base64Size: preparedImage.diagnostics.base64.approxSizeFormatted,
   });
 
   const response = await fetch(MOODBOARD_API_URL, {
@@ -281,18 +350,296 @@ async function generateMoodboardWithGemini(imageFile, promptText) {
   return normalizeMoodboard(data?.moodboard);
 }
 
+async function prepareImageForApi(imageFile) {
+  const originalDiagnostics = {
+    name: imageFile.name,
+    type: imageFile.type || "unknown",
+    sizeBytes: imageFile.size,
+    sizeFormatted: formatBytes(imageFile.size),
+  };
+
+  console.info("[Moodboard][diagnostics] original image file", originalDiagnostics);
+
+  try {
+    const compressed = await compressImageFile(imageFile);
+    const base64 = await fileToBase64(compressed.file);
+    const base64ApproxBytes = getBase64ApproxBytes(base64);
+    const diagnostics = {
+      original: originalDiagnostics,
+      compressed: {
+        name: compressed.file.name,
+        type: compressed.file.type,
+        sizeBytes: compressed.file.size,
+        sizeFormatted: formatBytes(compressed.file.size),
+        width: compressed.width,
+        height: compressed.height,
+        originalWidth: compressed.originalWidth,
+        originalHeight: compressed.originalHeight,
+        maxDimension: IMAGE_MAX_DIMENSION,
+        jpegQuality: IMAGE_JPEG_QUALITY,
+      },
+      base64: {
+        length: base64.length,
+        approxBytes: base64ApproxBytes,
+        approxSizeFormatted: formatBytes(base64ApproxBytes),
+      },
+    };
+
+    setLastDiagnostics({ image: diagnostics });
+
+    console.info("[Moodboard][diagnostics] compressed image file", diagnostics.compressed);
+    console.info("[Moodboard][diagnostics] base64 payload", diagnostics.base64);
+
+    return {
+      file: compressed.file,
+      base64,
+      diagnostics,
+    };
+  } catch (error) {
+    logFrontendError("image compression failed", {
+      original: originalDiagnostics,
+      error: serializeError(error),
+    });
+    throw new Error("Не удалось сжать изображение на устройстве. Попробуйте другое фото или сделайте скриншот изображения.");
+  }
+}
+
+async function compressImageFile(file) {
+  const image = await loadImageFromFile(file);
+  const originalWidth = image.naturalWidth || image.width;
+  const originalHeight = image.naturalHeight || image.height;
+  const { width, height } = getResizedDimensions(originalWidth, originalHeight, IMAGE_MAX_DIMENSION);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext("2d", { alpha: false });
+
+  if (!context) {
+    throw new Error("Canvas 2D context is unavailable.");
+  }
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+
+  const blob = await canvasToBlob(canvas, "image/jpeg", IMAGE_JPEG_QUALITY);
+
+  if (!blob) {
+    throw new Error("Canvas returned an empty JPEG blob.");
+  }
+
+  return {
+    file: new File([blob], getCompressedFileName(file.name), {
+      type: "image/jpeg",
+      lastModified: Date.now(),
+    }),
+    originalWidth,
+    originalHeight,
+    width,
+    height,
+  };
+}
+
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Image decoding failed."));
+    };
+
+    image.src = objectUrl;
+  });
+}
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve) => {
+    canvas.toBlob(resolve, type, quality);
+  });
+}
+
+function getResizedDimensions(width, height, maxDimension) {
+  const longestSide = Math.max(width, height);
+
+  if (!longestSide || longestSide <= maxDimension) {
+    return { width, height };
+  }
+
+  const scale = maxDimension / longestSide;
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
+function getCompressedFileName(fileName) {
+  const safeName = String(fileName || "reference").replace(/\.[^.]+$/, "");
+  return `${safeName || "reference"}-compressed.jpg`;
+}
+
+function getBase64ApproxBytes(base64) {
+  const cleanBase64 = String(base64 || "").replace(/\s/g, "");
+  const padding = cleanBase64.endsWith("==") ? 2 : cleanBase64.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((cleanBase64.length * 3) / 4) - padding);
+}
+
 async function parseJsonResponse(response) {
   const text = await response.text();
+  let data = {};
 
   if (!text) {
-    return {};
+    logApiResponse(response, text, data);
+    return data;
   }
 
   try {
-    return JSON.parse(text);
+    data = JSON.parse(text);
+    logApiResponse(response, text, data);
+    return data;
   } catch (error) {
+    logApiResponse(response, text, { parseError: serializeError(error) });
     throw new Error("Proxy вернул ответ в неожиданном формате.");
   }
+}
+
+function logApiResponse(response, rawText, parsedResponse) {
+  const apiDiagnostics = {
+    ok: response.ok,
+    status: response.status,
+    statusText: response.statusText,
+    rawText,
+    parsedResponse,
+  };
+
+  setLastDiagnostics({ apiResponse: apiDiagnostics });
+  console.info("[Moodboard][diagnostics] full API response", apiDiagnostics);
+}
+
+function setLastDiagnostics(partialDiagnostics) {
+  window.__MOODBOARD_LAST_DIAGNOSTICS = {
+    ...window.__MOODBOARD_LAST_DIAGNOSTICS,
+    ...partialDiagnostics,
+    updatedAt: new Date().toISOString(),
+  };
+  renderDebugPanel();
+}
+
+function initDebugPanel() {
+  if (!debugPanel) {
+    return;
+  }
+
+  debugPanel.hidden = !IS_DEBUG_MODE;
+
+  if (!IS_DEBUG_MODE) {
+    return;
+  }
+
+  setLastDiagnostics({
+    userAgent: navigator.userAgent,
+    origin: window.location.origin || "file://",
+    pageUrl: window.location.href,
+  });
+}
+
+function renderDebugPanel() {
+  if (!IS_DEBUG_MODE || !debugPanel) {
+    return;
+  }
+
+  const diagnostics = window.__MOODBOARD_LAST_DIAGNOSTICS || {};
+  const image = diagnostics.image || {};
+  const original = image.original || {};
+  const compressed = image.compressed || {};
+  const base64 = image.base64 || {};
+  const apiResponse = diagnostics.apiResponse || {};
+  const error = diagnostics.lastFrontendError || {};
+  const apiErrorText =
+    apiResponse.parsedResponse?.error?.message ||
+    (typeof apiResponse.parsedResponse?.error === "string" ? apiResponse.parsedResponse.error : "") ||
+    apiResponse.parsedResponse?.message ||
+    "";
+
+  setDebugText(debugUpdatedAt, diagnostics.updatedAt ? new Date(diagnostics.updatedAt).toLocaleTimeString("ru-RU") : "Ожидает данных");
+  setDebugText(debugOriginalSize, formatDebugFile(original));
+  setDebugText(debugCompressedSize, formatDebugFile(compressed));
+  setDebugText(debugBase64Size, base64.approxSizeFormatted ? `${base64.approxSizeFormatted} / ${base64.length || 0} chars` : "—");
+  setDebugText(
+    debugApiStatus,
+    apiResponse.status ? `${apiResponse.status} ${apiResponse.statusText || ""}`.trim() : "—"
+  );
+  setDebugText(
+    debugErrorText,
+    diagnostics.visibleError || error.error?.message || error.reason?.message || error.message || error.label || apiErrorText || "—"
+  );
+  setDebugText(debugUserAgent, diagnostics.userAgent || navigator.userAgent || "—");
+  setDebugText(debugOrigin, diagnostics.origin || window.location.origin || "file://");
+}
+
+function formatDebugFile(fileInfo) {
+  if (!fileInfo || !fileInfo.sizeFormatted) {
+    return "—";
+  }
+
+  const dimensions = fileInfo.width && fileInfo.height ? `, ${fileInfo.width}×${fileInfo.height}` : "";
+  const originalDimensions =
+    fileInfo.originalWidth && fileInfo.originalHeight ? `, исходно ${fileInfo.originalWidth}×${fileInfo.originalHeight}` : "";
+  return `${fileInfo.sizeFormatted} (${fileInfo.sizeBytes || 0} B${dimensions}${originalDimensions})`;
+}
+
+function setDebugText(element, value) {
+  if (element) {
+    element.textContent = value || "—";
+  }
+}
+
+function formatBytes(bytes) {
+  const numericBytes = Number(bytes) || 0;
+  const units = ["B", "KB", "MB", "GB"];
+  let value = numericBytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function logFrontendError(label, details = {}) {
+  const payload = {
+    label,
+    ...details,
+    timestamp: new Date().toISOString(),
+  };
+
+  setLastDiagnostics({ lastFrontendError: payload });
+  console.error("[Moodboard][frontend error]", payload);
+}
+
+function serializeError(error) {
+  if (!error) {
+    return null;
+  }
+
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return error;
 }
 
 function normalizeMoodboard(value) {
@@ -535,6 +882,9 @@ async function downloadGeneratedMoodboard() {
     const pngDataUrl = canvas.toDataURL("image/png");
     triggerDownload(pngDataUrl, `moodboard-${new Date().toISOString().slice(0, 10)}.png`);
   } catch (error) {
+    logFrontendError("download failed", {
+      error: serializeError(error),
+    });
     console.error("[Moodboard] download error", error);
     showError("Не удалось скачать мудборд. Попробуйте ещё раз.");
   } finally {

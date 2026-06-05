@@ -955,6 +955,73 @@ textarea:focus {
   padding: 0 20px 32px;
 }
 
+.debug-panel {
+  width: min(1400px, calc(100% - 48px));
+  margin: 0 auto 28px;
+  padding: 16px;
+  border: 1px solid rgba(30, 30, 30, 0.18);
+  border-radius: 18px;
+  background: #1f1d1a;
+  color: #f8f7f4;
+  box-shadow: 0 20px 60px rgba(15, 15, 15, 0.14);
+}
+
+.debug-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(248, 247, 244, 0.12);
+}
+
+.debug-panel__header strong {
+  font-size: 14px;
+}
+
+.debug-panel__header span {
+  color: rgba(248, 247, 244, 0.62);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.debug-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.debug-grid div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(248, 247, 244, 0.1);
+  border-radius: 12px;
+  background: rgba(248, 247, 244, 0.05);
+}
+
+.debug-grid__wide {
+  grid-column: span 2;
+}
+
+.debug-grid dt {
+  margin-bottom: 5px;
+  color: rgba(248, 247, 244, 0.58);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.debug-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -1038,6 +1105,18 @@ textarea:focus {
     flex-direction: column;
     gap: 6px;
     text-align: center;
+  }
+
+  .debug-panel {
+    width: min(100% - 28px, 1400px);
+  }
+
+  .debug-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .debug-grid__wide {
+    grid-column: auto;
   }
 }
 

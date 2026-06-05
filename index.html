@@ -162,5 +162,42 @@
       <span>Serverless proxy</span>
       <span>PNG 1920×1080</span>
     </footer>
+
+    <aside class="debug-panel" id="debugPanel" aria-label="Диагностика генерации" hidden>
+      <div class="debug-panel__header">
+        <strong>Debug diagnostics</strong>
+        <span id="debugUpdatedAt">Ожидает данных</span>
+      </div>
+      <dl class="debug-grid">
+        <div>
+          <dt>Оригинальный файл</dt>
+          <dd id="debugOriginalSize">—</dd>
+        </div>
+        <div>
+          <dt>Сжатый файл</dt>
+          <dd id="debugCompressedSize">—</dd>
+        </div>
+        <div>
+          <dt>Base64</dt>
+          <dd id="debugBase64Size">—</dd>
+        </div>
+        <div>
+          <dt>API status</dt>
+          <dd id="debugApiStatus">—</dd>
+        </div>
+        <div class="debug-grid__wide">
+          <dt>Ошибка</dt>
+          <dd id="debugErrorText">—</dd>
+        </div>
+        <div class="debug-grid__wide">
+          <dt>User agent</dt>
+          <dd id="debugUserAgent">—</dd>
+        </div>
+        <div class="debug-grid__wide">
+          <dt>Origin</dt>
+          <dd id="debugOrigin">—</dd>
+        </div>
+      </dl>
+    </aside>
   </body>
 </html>
