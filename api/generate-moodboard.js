@@ -52,11 +52,11 @@ module.exports = async function handler(request, response) {
     const { geminiResponse, geminiData, model } = geminiResult;
 
     if (!geminiResponse.ok) {
-      console.error("[Moodboard API] raw Gemini error response", {
+      logRawGeminiError({
+        label: "raw Gemini error response",
         model,
-        status: geminiResponse.status,
-        statusText: geminiResponse.statusText,
-        rawResponse: geminiResult.rawText,
+        geminiResponse,
+        rawText: geminiResult.rawText,
         parsedResponse: geminiData,
       });
 
@@ -105,12 +105,13 @@ async function requestGeminiWithFallback({ apiKey, imageBase64, mimeType, prompt
     return primaryResult;
   }
 
-  console.error("[Moodboard API] Gemini model not found, trying fallback", {
+  logRawGeminiError({
+    label: "Gemini model not found, trying fallback",
     model: GEMINI_MODEL,
-    fallbackModel: GEMINI_FALLBACK_MODEL,
-    status: primaryResult.geminiResponse.status,
-    rawResponse: primaryResult.rawText,
+    geminiResponse: primaryResult.geminiResponse,
+    rawText: primaryResult.rawText,
     parsedResponse: primaryResult.geminiData,
+    extra: { fallbackModel: GEMINI_FALLBACK_MODEL },
   });
 
   return requestGeminiModel({
@@ -161,6 +162,23 @@ async function requestGeminiModel({ apiKey, imageBase64, mimeType, prompt, fileN
 
 function getGeminiApiUrl(model) {
   return `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`;
+}
+
+function logRawGeminiError({ label, model, geminiResponse, rawText, parsedResponse, extra = {} }) {
+  console.error(
+    `[Moodboard API] ${label}\n${JSON.stringify(
+      {
+        model,
+        status: geminiResponse.status,
+        statusText: geminiResponse.statusText,
+        rawText,
+        parsedResponse,
+        ...extra,
+      },
+      null,
+      2
+    )}`
+  );
 }
 
 function setCorsHeaders(request, response) {
