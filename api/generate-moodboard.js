@@ -1,5 +1,6 @@
 const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_FALLBACK_MODEL = "gemini-1.5-flash";
+const GEMINI_RETRY_DELAYS_MS = [2000, 5000];
 const MAX_IMAGE_BASE64_LENGTH = 8 * 1024 * 1024;
 
 module.exports = async function handler(request, response) {
@@ -115,38 +116,58 @@ async function requestGeminiWithFallback({ apiKey, imageBase64, mimeType, prompt
 
 async function requestGeminiModel({ apiKey, imageBase64, mimeType, prompt, fileName, model }) {
   const geminiApiUrl = getGeminiApiUrl(model);
+  const requestBody = JSON.stringify(buildGeminiRequestBody({ imageBase64, mimeType, prompt }));
+  const maxAttempts = GEMINI_RETRY_DELAYS_MS.length + 1;
 
-  console.info("[Moodboard API] start Gemini JSON request", {
-    model,
-    fileName,
-    mimeType,
-    promptLength: prompt.length,
-    imageBytesApprox: Math.round((imageBase64.length * 3) / 4),
-  });
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    console.info("[Moodboard API] start Gemini JSON request", {
+      model,
+      attempt,
+      maxAttempts,
+      fileName,
+      mimeType,
+      promptLength: prompt.length,
+      imageBytesApprox: Math.round((imageBase64.length * 3) / 4),
+    });
 
-  const geminiResponse = await fetch(geminiApiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": apiKey,
-    },
-    body: JSON.stringify(buildGeminiRequestBody({ imageBase64, mimeType, prompt })),
-  });
+    const geminiResponse = await fetch(geminiApiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: requestBody,
+    });
 
-  const { data: geminiData, rawText } = await parseJsonResponse(geminiResponse);
+    const { data: geminiData, rawText } = await parseJsonResponse(geminiResponse);
+    const result = {
+      geminiResponse,
+      geminiData,
+      rawText,
+      model,
+    };
 
-  console.info("[Moodboard API] Gemini JSON response", {
-    model,
-    ok: geminiResponse.ok,
-    status: geminiResponse.status,
-  });
+    console.info("[Moodboard API] Gemini JSON response", {
+      model,
+      attempt,
+      maxAttempts,
+      ok: geminiResponse.ok,
+      status: geminiResponse.status,
+    });
 
-  return {
-    geminiResponse,
-    geminiData,
-    rawText,
-    model,
-  };
+    if (!isGeminiUnavailable(geminiResponse, geminiData) || attempt === maxAttempts) {
+      return result;
+    }
+
+    const delayMs = GEMINI_RETRY_DELAYS_MS[attempt - 1];
+    console.warn("[Moodboard API] Gemini 503 UNAVAILABLE, retrying", {
+      model,
+      attempt,
+      nextAttempt: attempt + 1,
+      delayMs,
+    });
+    await wait(delayMs);
+  }
 }
 
 function getGeminiApiUrl(model) {
@@ -406,6 +427,17 @@ function isModelNotFoundError(data) {
   );
 }
 
+function isGeminiUnavailable(response, data) {
+  const apiStatus = data?.error?.status || data?.status;
+  return response.status === 503 && (!apiStatus || String(apiStatus).toUpperCase() === "UNAVAILABLE");
+}
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 function getReadableGeminiError(data, status) {
   const apiMessage = data?.error?.message || data?.message;
   const normalizedMessage = String(apiMessage || "").toLowerCase();
@@ -436,6 +468,10 @@ function getReadableGeminiError(data, status) {
 
   if (status === 429) {
     return "Слишком много запросов к Gemini. Подождите немного и попробуйте снова.";
+  }
+
+  if (status === 503 && String(data?.error?.status || data?.status || "").toUpperCase() === "UNAVAILABLE") {
+    return "Gemini сейчас перегружен. Попробуйте ещё раз через минуту.";
   }
 
   return `Gemini вернул ошибку ${status}. Попробуйте ещё раз.`;
