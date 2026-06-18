@@ -20,25 +20,30 @@
   <body>
     <header class="app-header">
       <a class="brand" href="#top" aria-label="Генератор мудбордов">
-        <span class="brand-mark" aria-hidden="true">М</span>
-        <span>Генератор мудбордов</span>
+        <em class="brand-em">Генератор</em><span class="brand-rest"> мудбордов</span>
       </a>
 
       <nav class="header-actions" aria-label="Навигация">
-        <a href="#generator">Начать</a>
+        <a href="#generator" class="header-link">Начать работу</a>
       </nav>
     </header>
 
     <main class="app-shell" id="top">
       <section class="intro" aria-labelledby="pageTitle">
-        <p class="eyebrow">Creative direction board</p>
+        <div class="intro-header">
+          <p class="eyebrow">Creative direction board</p>
+          <span class="intro-index" aria-hidden="true">01</span>
+        </div>
         <div class="intro-row">
           <h1 id="pageTitle">Мудборд из референса и описания</h1>
-          <p>
-            Загрузите фото, опишите настроение — и Gemini создаст одно профессиональное изображение
-            мудборда с цветами, текстурами, светом и editorial-композицией для бренда, интерьера,
-            фотосессии или презентации.
-          </p>
+          <div class="intro-desc">
+            <p>
+              Загрузите фото, опишите настроение — и Gemini создаст одно профессиональное изображение
+              мудборда с цветами, текстурами, светом и editorial-композицией для бренда, интерьера,
+              фотосессии или презентации.
+            </p>
+            <span class="intro-hint">Gemini · gemini-2.5-flash-image</span>
+          </div>
         </div>
       </section>
 
@@ -143,22 +148,22 @@
       <section class="result-area" aria-labelledby="resultTitle">
         <div class="result-bar">
           <div>
-            <p class="eyebrow">Результат</p>
+            <p class="eyebrow">Результат · 02</p>
             <h2 id="resultTitle">Creative direction board</h2>
           </div>
           <span class="status-pill" id="resultStatus">Ожидает данных</span>
         </div>
 
         <div class="empty-state" id="emptyState">
+          <div>
+            <h3>Мудборд появится здесь</h3>
+            <p>Gemini создаст профессиональное изображение на основе вашего референса и описания.</p>
+          </div>
           <div class="empty-board" aria-hidden="true">
             <span></span>
             <span></span>
             <span></span>
             <span></span>
-          </div>
-          <div>
-            <h3>Мудборд появится здесь</h3>
-            <p>Gemini создаст профессиональное изображение на основе вашего референса и описания.</p>
           </div>
         </div>
 
@@ -183,9 +188,12 @@
     </main>
 
     <footer class="site-footer">
-      <span>GitHub Pages frontend</span>
-      <span>Serverless proxy</span>
-      <span>Gemini Image Generation</span>
+      <div class="footer-inner">
+        <a class="footer-brand" href="#top" aria-label="Генератор мудбордов">
+          <em>Генератор</em> мудбордов
+        </a>
+        <span class="footer-stack">GitHub Pages · Vercel · Gemini Image API</span>
+      </div>
     </footer>
 
     <aside class="debug-panel" id="debugPanel" aria-label="Диагностика генерации" hidden>
