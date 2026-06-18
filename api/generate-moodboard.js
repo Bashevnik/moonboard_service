@@ -24,18 +24,6 @@ module.exports = async function handler(request, response) {
   try {
     const body = await readJsonBody(request);
 
-    const expectedCode = process.env.APP_ACCESS_CODE;
-    if (!expectedCode) {
-      sendJson(response, 500, { error: "Сервис не настроен: обратитесь к администратору." });
-      return;
-    }
-
-    const accessCode = String(body.accessCode || "").trim();
-    if (accessCode !== expectedCode) {
-      sendJson(response, 401, { error: "Неверный код доступа." });
-      return;
-    }
-
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       sendJson(response, 500, { error: "GEMINI_API_KEY не задан в Vercel Environment Variables." });

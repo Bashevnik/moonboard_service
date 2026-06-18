@@ -3,7 +3,6 @@ const IMAGE_MAX_DIMENSION = 1024;
 const IMAGE_JPEG_QUALITY = 0.82;
 const IS_DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") === "1";
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
-const ACCESS_CODE_STORAGE_KEY = "moodboard_access_code";
 
 const generatorForm = document.getElementById("generatorForm");
 const dropZone = document.getElementById("dropZone");
@@ -14,7 +13,6 @@ const previewImage = document.getElementById("previewImage");
 const fileName = document.getElementById("fileName");
 const removeImageButton = document.getElementById("removeImageButton");
 const promptInput = document.getElementById("promptInput");
-const accessCodeInput = document.getElementById("accessCodeInput");
 const formError = document.getElementById("formError");
 const generateButton = document.getElementById("generateButton");
 const generateButtonText = generateButton.querySelector(".button-text");
@@ -47,7 +45,6 @@ let selectedAspectRatio = "16:9";
 
 window.__MOODBOARD_LAST_DIAGNOSTICS = {};
 
-loadSavedAccessCode();
 initDebugPanel();
 initAspectRatioButtons();
 
@@ -120,8 +117,7 @@ generatorForm.addEventListener("submit", async (event) => {
   }
 
   const promptText = promptInput.value.trim();
-  const accessCode = accessCodeInput.value.trim();
-  const validationError = getValidationError(promptText, accessCode);
+  const validationError = getValidationError(promptText);
 
   if (validationError) {
     showError(validationError);
@@ -142,8 +138,7 @@ generatorForm.addEventListener("submit", async (event) => {
       aspectRatio: selectedAspectRatio,
     });
 
-    const imageData = await generateMoodboard(selectedImageFile, promptText, selectedAspectRatio, accessCode);
-    saveAccessCode(accessCode);
+    const imageData = await generateMoodboard(selectedImageFile, promptText, selectedAspectRatio);
     renderResult(imageData);
 
     console.info("[Moodboard] generation success", { model: imageData.model });
@@ -249,45 +244,12 @@ function initAspectRatioButtons() {
   });
 }
 
-function loadSavedAccessCode() {
-  try {
-    const saved = sessionStorage.getItem(ACCESS_CODE_STORAGE_KEY);
-    if (saved && accessCodeInput) {
-      accessCodeInput.value = saved;
-    }
-  } catch {
-    // sessionStorage unavailable
-  }
-}
-
-function saveAccessCode(code) {
-  try {
-    sessionStorage.setItem(ACCESS_CODE_STORAGE_KEY, code);
-  } catch {
-    // sessionStorage unavailable
-  }
-}
-
-function clearAccessCode() {
-  try {
-    sessionStorage.removeItem(ACCESS_CODE_STORAGE_KEY);
-    if (accessCodeInput) {
-      accessCodeInput.value = "";
-    }
-  } catch {
-    // sessionStorage unavailable
-  }
-}
-
-function getValidationError(promptText, accessCode) {
+function getValidationError(promptText) {
   if (!selectedImageFile) {
     return "Сначала загрузите референс.";
   }
   if (!promptText) {
     return "Опишите настроение, стиль и задачу для мудборда.";
-  }
-  if (!accessCode) {
-    return "Введите код доступа.";
   }
   return "";
 }
@@ -310,7 +272,6 @@ function setGeneratingState(isLoading) {
   generateButton.disabled = isLoading;
   imageInput.disabled = isLoading;
   promptInput.disabled = isLoading;
-  accessCodeInput.disabled = isLoading;
   removeImageButton.disabled = isLoading;
   downloadButton.disabled = isLoading;
   generatorForm.setAttribute("aria-busy", String(isLoading));
@@ -323,7 +284,7 @@ function updateLoaderText(text) {
   }
 }
 
-async function generateMoodboard(imageFile, promptText, aspectRatio, accessCode) {
+async function generateMoodboard(imageFile, promptText, aspectRatio) {
   updateLoaderText("Сжимаем изображение...");
   const preparedImage = await prepareImageForApi(imageFile);
 
@@ -334,7 +295,6 @@ async function generateMoodboard(imageFile, promptText, aspectRatio, accessCode)
     mimeType: preparedImage.file.type || "image/jpeg",
     prompt: promptText,
     aspectRatio,
-    accessCode,
     fileName: preparedImage.file.name,
   };
 
@@ -369,9 +329,6 @@ async function generateMoodboard(imageFile, promptText, aspectRatio, accessCode)
   });
 
   if (!response.ok) {
-    if (response.status === 401) {
-      clearAccessCode();
-    }
     throw new Error(data?.error || getProxyErrorMessage(response.status));
   }
 
@@ -596,7 +553,6 @@ function setResultStatus(text, isReady) {
 
 function getProxyErrorMessage(status) {
   if (status === 400) return "Proxy отклонил запрос. Проверьте формат изображения и описание.";
-  if (status === 401) return "Неверный код доступа.";
   if (status === 403) return "Запрос заблокирован proxy.";
   if (status === 429) return "Слишком много запросов. Подождите немного и попробуйте снова.";
   if (status === 504) return "Gemini не ответил вовремя. Попробуйте ещё раз.";

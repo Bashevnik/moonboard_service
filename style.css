@@ -396,8 +396,7 @@ textarea:focus {
 
 /* ─── ACTION FIELD ───────────────────────────────────────── */
 
-.aspect-ratio-field,
-.access-code-inner {
+.aspect-ratio-field {
   display: grid;
   gap: 8px;
 }
@@ -439,33 +438,6 @@ textarea:focus {
 .ratio-btn:disabled {
   cursor: not-allowed;
   opacity: 0.5;
-}
-
-.access-code-input {
-  width: 100%;
-  padding: 10px 13px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  background: #fefcf8;
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 400;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-
-.access-code-input::placeholder {
-  color: #a09a90;
-}
-
-.access-code-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(164, 108, 68, 0.1);
-  outline: none;
-}
-
-.access-code-input:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
 }
 
 /* ─── BUTTONS ────────────────────────────────────────────── */
@@ -874,10 +846,6 @@ textarea:focus {
     flex: 1 1 160px;
   }
 
-  .access-code-inner {
-    flex: 1 1 180px;
-  }
-
   .action-field .primary-button {
     flex-shrink: 0;
     align-self: flex-end;
@@ -931,8 +899,7 @@ textarea:focus {
     border-right: none;
   }
 
-  .aspect-ratio-field,
-  .access-code-inner {
+  .aspect-ratio-field {
     flex: none;
   }
 
