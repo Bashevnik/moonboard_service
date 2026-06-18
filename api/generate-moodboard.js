@@ -164,18 +164,26 @@ function buildGeminiRequestBody({ imageBase64, mimeType, prompt, aspectRatio }) 
 }
 
 function buildGeminiPrompt(prompt, aspectRatio) {
-  return `Create a single professional moodboard image in ${aspectRatio} format.
+  return `Create a professional moodboard image in ${aspectRatio} format.
 
-Use the uploaded reference image as the primary inspiration for color palette, textures, lighting mood, and overall visual atmosphere.
+IMPORTANT: The uploaded reference photo must appear as a distinct visible panel inside the moodboard layout. Do not replace or stylize it — place it as-is as the central anchor of the composition.
 
-User description: ${prompt}
+Around the reference photo, build a cohesive editorial moodboard that includes:
+- Color palette swatches extracted from the reference photo
+- Texture and material close-ups that match the mood
+- 2–3 atmospheric photography panels that complement the reference
+- Minimal section labels only (e.g. COLOR, TEXTURE, MOOD) — no long text
 
-Instructions:
-- Output one cohesive moodboard composition, not a random collage
-- Include color swatches, texture studies, and atmospheric photography references arranged in an editorial layout
-- Use only subtle typographic labels for section markers (no body text, no captions, no long paragraphs)
-- Do not include website UI elements, JSON, code, chat interfaces, or watermarks in the output
-- Professional creative direction quality suitable for brand, interior, or editorial projects`;
+Creative direction from the user: ${prompt}
+
+Output format: ${aspectRatio}
+
+Rules:
+- The original reference photo must be clearly visible as one of the panels
+- Unified editorial layout — not a random grid of unrelated images
+- No website UI, no JSON, no code, no watermarks, no chat interface elements
+- Do not return the reference photo alone without any moodboard elements around it
+- Professional quality suitable for brand, interior, or fashion projects`;
 }
 
 function extractImageFromGeminiResponse(data) {
