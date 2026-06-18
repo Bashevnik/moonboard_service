@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Генератор мудбордов: загрузите референс, опишите настроение и получите готовый creative direction board 16:9."
+      content="Генератор мудбордов: загрузите референс, опишите настроение и получите готовое изображение creative direction board."
     />
     <title>Генератор мудбордов</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -15,7 +15,6 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="style.css" />
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
     <script src="script.js" defer></script>
   </head>
   <body>
@@ -34,11 +33,11 @@
       <section class="intro" aria-labelledby="pageTitle">
         <p class="eyebrow">Creative direction board</p>
         <div class="intro-row">
-          <h1 id="pageTitle">Мудборд 16:9 из референса и описания</h1>
+          <h1 id="pageTitle">Мудборд из референса и описания</h1>
           <p>
-            Загрузите фото, опишите настроение, и сервис соберёт цельное визуальное направление:
-            цвет, материалы, свет, композицию и editorial-заметки для бренда, интерьера,
-            фотосессии, сайта или презентации.
+            Загрузите фото, опишите настроение — и Gemini создаст одно профессиональное изображение
+            мудборда с цветами, текстурами, светом и editorial-композицией для бренда, интерьера,
+            фотосессии или презентации.
           </p>
         </div>
       </section>
@@ -48,7 +47,7 @@
           <div class="upload-field">
             <div class="field-label">
               <label for="imageInput">Референс</label>
-              <span>PNG, JPG, WEBP</span>
+              <span>JPEG, PNG, WebP</span>
             </div>
 
             <div
@@ -58,7 +57,7 @@
               tabindex="0"
               aria-controls="imageInput"
             >
-              <input id="imageInput" type="file" accept="image/*" hidden />
+              <input id="imageInput" type="file" accept="image/jpeg,image/png,image/webp" hidden />
 
               <div class="drop-content" id="dropContent">
                 <span class="drop-icon" aria-hidden="true">
@@ -74,7 +73,7 @@
                 <img id="previewImage" alt="Превью загруженного референса" />
                 <div class="preview-meta">
                   <strong id="fileName">Файл выбран</strong>
-                  <span>Готово</span>
+                  <span>Готово к отправке</span>
                 </div>
               </div>
             </div>
@@ -97,6 +96,31 @@
           </div>
 
           <div class="action-field">
+            <div class="aspect-ratio-field">
+              <div class="field-label">
+                <label>Формат</label>
+              </div>
+              <div class="aspect-ratio-options" role="group" aria-label="Формат изображения">
+                <button type="button" class="ratio-btn is-active" data-ratio="16:9">16:9</button>
+                <button type="button" class="ratio-btn" data-ratio="1:1">1:1</button>
+                <button type="button" class="ratio-btn" data-ratio="4:3">4:3</button>
+                <button type="button" class="ratio-btn" data-ratio="9:16">9:16</button>
+              </div>
+            </div>
+
+            <div class="access-code-inner">
+              <div class="field-label">
+                <label for="accessCodeInput">Код доступа</label>
+              </div>
+              <input
+                id="accessCodeInput"
+                type="password"
+                class="access-code-input"
+                autocomplete="off"
+                placeholder="Введите код доступа"
+              />
+            </div>
+
             <button class="primary-button" id="generateButton" type="submit">
               <span class="button-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" focusable="false">
@@ -108,7 +132,7 @@
 
             <div class="loader" id="loader" aria-live="polite" hidden>
               <span class="spinner" aria-hidden="true"></span>
-              <span>Собираем визуальное направление...</span>
+              <span id="loaderText">Сжимаем изображение...</span>
             </div>
           </div>
 
@@ -134,22 +158,23 @@
           </div>
           <div>
             <h3>Мудборд появится здесь</h3>
-            <p>Формат результата — 16:9, готовый к скачиванию в PNG 1920×1080.</p>
+            <p>Gemini создаст профессиональное изображение на основе вашего референса и описания.</p>
           </div>
         </div>
 
         <div class="result-view" id="resultSection" hidden>
-          <div class="generated-board-wrap">
-            <div class="generated-board" id="moodboardCanvas" aria-label="Готовый мудборд 16:9"></div>
+          <div class="result-image-wrap">
+            <img id="resultImage" alt="Сгенерированный мудборд" />
           </div>
 
           <div class="result-actions">
             <div>
               <strong>Мудборд готов</strong>
-              <span id="resultMeta">Формат 16:9</span>
+              <span id="resultMeta">Gemini</span>
             </div>
             <div class="toolbar-actions">
-              <button class="secondary-button" id="generateAgainButton" type="button">Изменить</button>
+              <button class="secondary-button" id="editDescriptionButton" type="button">Изменить описание</button>
+              <button class="secondary-button" id="generateAgainButton" type="button">Создать заново</button>
               <button class="primary-button compact" id="downloadButton" type="button">Скачать PNG</button>
             </div>
           </div>
@@ -160,7 +185,7 @@
     <footer class="site-footer">
       <span>GitHub Pages frontend</span>
       <span>Serverless proxy</span>
-      <span>PNG 1920×1080</span>
+      <span>Gemini Image Generation</span>
     </footer>
 
     <aside class="debug-panel" id="debugPanel" aria-label="Диагностика генерации" hidden>

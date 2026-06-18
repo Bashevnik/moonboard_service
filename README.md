@@ -1,138 +1,87 @@
 # Генератор мудбордов
 
-Одностраничный сайт для GitHub Pages с безопасным serverless proxy на Vercel.
+Одностраничный сайт на GitHub Pages + Vercel Serverless proxy.
 
-Проект работает без платной Gemini image generation: Gemini text model анализирует фото и описание, возвращает JSON-структуру мудборда, а frontend собирает красивый HTML/CSS-мудборд и скачивает его как PNG через `html2canvas`.
+Gemini получает изображение-референс и описание пользователя и возвращает одно профессиональное изображение мудборда. Загрузка и скачивание результата — напрямую, без внешних библиотек рендеринга.
 
-```text
-GitHub Pages frontend -> Vercel Function -> Gemini text model -> moodboard JSON
+```
+GitHub Pages (frontend) → Vercel Function (proxy) → Gemini Image API → изображение PNG/JPEG
 ```
 
-API-ключ хранится только в переменных окружения Vercel и не попадает во frontend-код.
+API-ключ и код доступа хранятся только в переменных окружения Vercel.
 
-## Файлы проекта
+## Архитектура
 
-- `index.html` - структура интерфейса и подключение `html2canvas`
-- `style.css` - визуальный стиль, адаптив и оформление мудборда
-- `script.js` - загрузка фото, валидация, запрос к proxy, рендер JSON-мудборда и скачивание PNG
-- `api/generate-moodboard.js` - Vercel Function для запроса к Gemini
-- `vercel.json` - настройки Vercel Function
-- `README.md` - инструкция по запуску и деплою
-
-## Как это работает
-
-1. Пользователь загружает фото и пишет описание настроения.
-2. Frontend отправляет `POST` на Vercel endpoint:
-
-```text
-https://moonboard-service-vercel.vercel.app/api/generate-moodboard
-```
-
-3. Vercel Function добавляет `GEMINI_API_KEY` из environment variable и вызывает Gemini text model.
-4. Backend возвращает JSON:
-
-```json
-{
-  "moodboard": {
-    "title": "Тихая студийная теплота",
-    "mood": "Спокойное, собранное и тактильное визуальное направление.",
-    "colorPalette": ["#F8F7F4", "#A46C44", "#617A55", "#E8E4DC"],
-    "materials": ["натуральное дерево", "матовая керамика", "мягкий лен"],
-    "keywords": ["спокойствие", "ремесленность", "премиальность"],
-    "composition": "Крупный референс, рядом палитра, материалы и заметки по направлению.",
-    "typographyMood": "Чистая современная типографика с уверенным заголовком.",
-    "lighting": "Мягкий дневной свет с теплым рассеянным контрастом."
-  }
-}
-```
-
-5. Frontend рендерит готовый мудборд в HTML/CSS.
-6. Кнопка `Скачать мудборд` экспортирует этот блок в PNG через `html2canvas`.
+- `index.html` — структура интерфейса
+- `style.css` — визуальный стиль и мобильная адаптация
+- `script.js` — загрузка, сжатие, запрос к proxy, отображение и скачивание результата
+- `api/generate-moodboard.js` — Vercel Function: CORS, код доступа, запрос к Gemini
+- `vercel.json` — настройки Function (maxDuration, memory)
 
 ## Локальный запуск frontend
-
-Можно открыть файл напрямую:
-
-```powershell
-Start-Process .\index.html
-```
-
-Или запустить статический сервер:
 
 ```bash
 python -m http.server 8000
 ```
 
-После этого открыть:
+Открыть: `http://localhost:8000`
 
-```text
-http://localhost:8000/
+Для работы с proxy локально добавьте `http://localhost:8000` в `ALLOWED_ORIGIN` в Vercel и перезапустите деплой.
+
+## Переменные окружения Vercel
+
+Все переменные задаются в `Project Settings → Environment Variables`.
+
+| Переменная | Обязательная | Описание |
+|---|---|---|
+| `GEMINI_API_KEY` | Да | Ключ из Google AI Studio. Никогда не коммитить. |
+| `GEMINI_IMAGE_MODEL` | Да | ID модели Gemini для генерации изображений. Рекомендовано: `gemini-2.5-flash-image` |
+| `APP_ACCESS_CODE` | Да | Произвольный секретный код для защиты endpoint. Никогда не коммитить и не публиковать. |
+| `ALLOWED_ORIGIN` | Нет | Разрешённые Origin через запятую. По умолчанию: `https://bashevnik.github.io` |
+
+Без `APP_ACCESS_CODE` и `GEMINI_API_KEY` функция вернёт 500 и не запустит генерацию.
+
+## Формат запроса frontend → proxy
+
+```json
+{
+  "imageBase64": "...",
+  "mimeType": "image/jpeg",
+  "prompt": "описание мудборда",
+  "aspectRatio": "16:9",
+  "accessCode": "..."
+}
 ```
 
-## Настройка Vercel Function
+Поддерживаемые MIME-типы: `image/jpeg`, `image/png`, `image/webp`.
 
-1. Создайте или откройте проект на Vercel.
-2. Перейдите в `Project Settings -> Environment Variables`.
-3. Добавьте переменную:
-
-```text
-GEMINI_API_KEY=ваш_ключ_из_Google_AI_Studio
-```
-
-4. Опционально добавьте origin для CORS:
-
-```text
-ALLOWED_ORIGIN=https://bashevnik.github.io
-```
-
-5. Сделайте redeploy проекта.
-
-В backend используется бесплатная текстовая модель:
-
-```js
-const GEMINI_MODEL = "gemini-2.5-flash";
-```
-
-Если модель недоступна, функция пробует fallback:
-
-```js
-const GEMINI_FALLBACK_MODEL = "gemini-1.5-flash";
-```
-
-## Проверка запроса
-
-В DevTools откройте `Network -> Fetch/XHR`, загрузите изображение, заполните описание и нажмите `Создать мудборд`.
-
-Должен появиться запрос к Vercel endpoint:
-
-```text
-https://moonboard-service-vercel.vercel.app/api/generate-moodboard
-```
-
-Запроса из браузера напрямую к `generativelanguage.googleapis.com` быть не должно.
-
-## Формат запроса frontend -> proxy
+## Формат ответа proxy → frontend
 
 ```json
 {
   "imageBase64": "...",
   "mimeType": "image/png",
-  "prompt": "описание мудборда",
-  "fileName": "reference.png"
+  "model": "gemini-2.5-flash-image",
+  "generatedAt": "2026-06-18T14:00:00.000Z"
 }
 ```
 
+## URL
+
+- Frontend: `https://bashevnik.github.io/moonboard_service/`
+- API: `https://moonboard-service-vercel.vercel.app/api/generate-moodboard`
+
 ## Безопасность
 
-- Не коммитьте реальный `GEMINI_API_KEY`.
-- Храните ключ только в Vercel Environment Variables.
-- Если ключ случайно попал в git, удалите его из истории и перевыпустите ключ в Google AI Studio.
-- Frontend на GitHub Pages должен обращаться только к serverless proxy, а не напрямую к Gemini.
+- `GEMINI_API_KEY`, `APP_ACCESS_CODE` — только в Vercel Environment Variables, никогда в git.
+- CORS ограничен: разрешён только `ALLOWED_ORIGIN`, пустой Origin и `*.vercel.app` заблокированы.
+- Код доступа проверяется на backend; frontend хранит его только в `sessionStorage`.
+- При неверном коде доступа — 401, `sessionStorage` очищается.
+- `.env`, `.env.*`, `.vercel`, `node_modules` добавлены в `.gitignore`.
 
-## GitHub Pages
+## Известные ограничения
 
-Ссылка GitHub Pages для этого репозитория:
-
-```text
-https://bashevnik.github.io/moonboard_service/
-```
+- Запрос к Vercel Function ограничен 4.5 MB. Сжатие до 1024px JPEG 0.82 позволяет держать входной base64 в пределах ~1 MB.
+- Сгенерированное изображение из Gemini возвращается через JSON-ответ (base64). Очень крупные изображения могут упереться в лимит ответа Vercel (~5 MB).
+- Retry — только один раз и только при 503. При 429 нужно подождать и попробовать вручную.
+- Aspect ratio передаётся в текстовом промпте; отдельного API-параметра для этой модели нет.
